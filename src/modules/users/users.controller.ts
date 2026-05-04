@@ -3,7 +3,7 @@ import {
   HttpCode, HttpStatus, ParseIntPipe,
 } from '@nestjs/common';
 import {
-  ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery,
+  ApiTags, ApiOperation, ApiResponse, ApiParam,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { UsersService } from './users.service';
@@ -13,8 +13,7 @@ import { FindDoctorsQueryDto, FindUsersQueryDto } from './dto/find-users-query.d
 import { DoctorResponseDto, PatientResponseDto, UserResponseDto } from './dto/user-response.dto';
 import { UserType } from './entities/user.entity';
 
-// ─── /users ───────────────────────────────────────────────────────────────────
-
+// Controller geral para operações comuns de usuários
 @ApiTags('Users')
 @Controller('users')
 export class UsersController {
@@ -36,6 +35,8 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Lista paginada de usuários.' })
   async findAll(@Query() query: FindUsersQueryDto) {
     const result = await this.usersService.findAll(query);
+
+    // Serializa cada usuário conforme seu tipo
     return { ...result, data: result.data.map((u) => this.serialize(u)) };
   }
 
@@ -73,14 +74,20 @@ export class UsersController {
   }
 
   private serialize(user: any) {
-    if (user.type === UserType.DOCTOR) return plainToInstance(DoctorResponseDto, user, { excludeExtraneousValues: true });
-    if (user.type === UserType.PATIENT) return plainToInstance(PatientResponseDto, user, { excludeExtraneousValues: true });
+    // Escolhe o DTO de resposta correto para evitar expor campos indevidos
+    if (user.type === UserType.DOCTOR) {
+      return plainToInstance(DoctorResponseDto, user, { excludeExtraneousValues: true });
+    }
+
+    if (user.type === UserType.PATIENT) {
+      return plainToInstance(PatientResponseDto, user, { excludeExtraneousValues: true });
+    }
+
     return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
   }
 }
 
-// ─── /doctors ─────────────────────────────────────────────────────────────────
-
+// Controller específico para consultas de médicos
 @ApiTags('Doctors')
 @Controller('doctors')
 export class DoctorsController {
@@ -91,7 +98,14 @@ export class DoctorsController {
   @ApiResponse({ status: 200, description: 'Lista paginada de médicos com especialidades.' })
   async findAll(@Query() query: FindDoctorsQueryDto) {
     const result = await this.usersService.findAllDoctors(query);
-    return { ...result, data: result.data.map((d) => plainToInstance(DoctorResponseDto, d, { excludeExtraneousValues: true })) };
+
+    // Mantém a paginação e converte apenas os dados retornados
+    return {
+      ...result,
+      data: result.data.map((d) =>
+        plainToInstance(DoctorResponseDto, d, { excludeExtraneousValues: true }),
+      ),
+    };
   }
 
   @Get(':id')
@@ -105,8 +119,7 @@ export class DoctorsController {
   }
 }
 
-// ─── /patients ────────────────────────────────────────────────────────────────
-
+// Controller específico para consultas de pacientes
 @ApiTags('Patients')
 @Controller('patients')
 export class PatientsController {
@@ -117,7 +130,14 @@ export class PatientsController {
   @ApiResponse({ status: 200, description: 'Lista paginada de pacientes.' })
   async findAll(@Query() query: FindUsersQueryDto) {
     const result = await this.usersService.findAllPatients(query);
-    return { ...result, data: result.data.map((p) => plainToInstance(PatientResponseDto, p, { excludeExtraneousValues: true })) };
+
+    // Mantém a paginação e aplica o DTO de resposta
+    return {
+      ...result,
+      data: result.data.map((p) =>
+        plainToInstance(PatientResponseDto, p, { excludeExtraneousValues: true }),
+      ),
+    };
   }
 
   @Get(':id')

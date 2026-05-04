@@ -67,7 +67,7 @@ export class Schedule {
   @Column({ type: 'text', nullable: true })
   cancellationReason: string;
 
-  // preenchido na Etapa 2 com o usuário autenticado
+  // será feito na parte 2
   @Column({ nullable: true })
   cancelledBy: number;
 

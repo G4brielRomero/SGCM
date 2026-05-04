@@ -28,7 +28,7 @@ export class User {
   email: string;
 
   @Column()
-  @Exclude() // nunca exposto em respostas
+  @Exclude() // nunca exposto em respostas pois é um dados sensivel
   password: string;
 
   @Column({ type: 'varchar' })

@@ -27,7 +27,7 @@ export class Specialty {
     inverseJoinColumn: { name: 'doctorId', referencedColumnName: 'id' },
   })
   doctors: Doctor[];
-
+  //salvar data e momento de criação e atualizaçao
   @CreateDateColumn()
   createdAt: Date;
 

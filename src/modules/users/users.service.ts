@@ -31,14 +31,16 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto): Promise<User> {
-    // Verificação de unicidade de e-mail
+    // Garante que não exista outro usuário com o mesmo e-mail
     const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
     if (emailExists) {
       throw new ConflictException(`Já existe um usuário cadastrado com o e-mail ${dto.email}.`);
     }
 
+    // Criptografa a senha antes de salvar
     const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
 
+    // Direciona para criação conforme tipo de usuário
     if (dto.type === UserType.DOCTOR) {
       return this.createDoctor(dto, hashedPassword);
     }
@@ -49,40 +51,76 @@ export class UsersService {
   }
 
   private async createDoctor(dto: CreateUserDto, hashedPassword: string): Promise<Doctor> {
+    // Validações específicas de médico
     if (!dto.crm) throw new BadRequestException('CRM é obrigatório para médicos.');
+
     const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
     if (crmExists) {
       throw new ConflictException(`Já existe um médico cadastrado com o CRM ${dto.crm}.`);
     }
-    const doctor = this.doctorRepository.create({ name: dto.name, email: dto.email, password: hashedPassword, crm: dto.crm });
+
+    const doctor = this.doctorRepository.create({
+      name: dto.name,
+      email: dto.email,
+      password: hashedPassword,
+      crm: dto.crm,
+    });
+
     return this.doctorRepository.save(doctor);
   }
 
   private async createPatient(dto: CreateUserDto, hashedPassword: string): Promise<Patient> {
+    // Validações específicas de paciente
     if (!dto.cpf) throw new BadRequestException('CPF é obrigatório para pacientes.');
     if (!dto.birthDate) throw new BadRequestException('Data de nascimento é obrigatória para pacientes.');
+
     this.validateBirthDateInPast(dto.birthDate);
+
     const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
     if (cpfExists) {
       throw new ConflictException(`Já existe um paciente cadastrado com o CPF ${dto.cpf}.`);
     }
-    const patient = this.patientRepository.create({ name: dto.name, email: dto.email, password: hashedPassword, cpf: dto.cpf, birthDate: dto.birthDate });
+
+    const patient = this.patientRepository.create({
+      name: dto.name,
+      email: dto.email,
+      password: hashedPassword,
+      cpf: dto.cpf,
+      birthDate: dto.birthDate,
+    });
+
     return this.patientRepository.save(patient);
   }
 
   private async createAdmin(dto: CreateUserDto, hashedPassword: string): Promise<Admin> {
-    const admin = this.userRepository.create({ name: dto.name, email: dto.email, password: hashedPassword, type: UserType.ADMIN }) as Admin;
+    // Admin não possui validações extras
+    const admin = this.userRepository.create({
+      name: dto.name,
+      email: dto.email,
+      password: hashedPassword,
+      type: UserType.ADMIN,
+    }) as Admin;
+
     return this.userRepository.save(admin) as Promise<Admin>;
   }
 
   async findAll(query: FindUsersQueryDto): Promise<PaginatedResult<User>> {
     const { page = 1, limit = 20, sort, search, type } = query;
-    const qb = this.userRepository.createQueryBuilder('user').where('user.isActive = :isActive', { isActive: true });
+
+    // Query base: apenas usuários ativos
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .where('user.isActive = :isActive', { isActive: true });
 
     if (type) qb.andWhere('user.type = :type', { type });
-    if (search) qb.andWhere('user.name LIKE :search OR user.email LIKE :search', { search: `%${search}%` });
+    if (search) {
+      qb.andWhere('user.name LIKE :search OR user.email LIKE :search', {
+        search: `%${search}%`,
+      });
+    }
 
     this.applySorting(qb, sort, 'user', 'name');
+
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
@@ -91,6 +129,7 @@ export class UsersService {
 
   async findAllDoctors(query: FindDoctorsQueryDto): Promise<PaginatedResult<Doctor>> {
     const { page = 1, limit = 20, sort, search, specialtyId } = query;
+
     const qb = this.doctorRepository
       .createQueryBuilder('doctor')
       .leftJoinAndSelect('doctor.specialties', 'specialty')
@@ -100,6 +139,7 @@ export class UsersService {
     if (search) qb.andWhere('doctor.name LIKE :search', { search: `%${search}%` });
 
     this.applySorting(qb, sort, 'doctor', 'name');
+
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
@@ -108,10 +148,15 @@ export class UsersService {
 
   async findAllPatients(query: FindUsersQueryDto): Promise<PaginatedResult<Patient>> {
     const { page = 1, limit = 20, sort, search } = query;
-    const qb = this.patientRepository.createQueryBuilder('patient').where('patient.isActive = :isActive', { isActive: true });
+
+    const qb = this.patientRepository
+      .createQueryBuilder('patient')
+      .where('patient.isActive = :isActive', { isActive: true });
 
     if (search) qb.andWhere('patient.name LIKE :search', { search: `%${search}%` });
+
     this.applySorting(qb, sort, 'patient', 'name');
+
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
@@ -119,6 +164,7 @@ export class UsersService {
   }
 
   async findOne(id: number): Promise<User> {
+    // Busca apenas usuários ativos
     const user = await this.userRepository.findOne({ where: { id, isActive: true } });
     if (!user) throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
     return user;
@@ -129,17 +175,19 @@ export class UsersService {
       where: { id, isActive: true },
       relations: ['specialties'],
     });
+
     if (!doctor) throw new NotFoundException(`Médico com id ${id} não foi encontrado.`);
     return doctor;
   }
 
   async findPatient(id: number): Promise<Patient> {
     const patient = await this.patientRepository.findOne({ where: { id, isActive: true } });
+
     if (!patient) throw new NotFoundException(`Paciente com id ${id} não foi encontrado.`);
     return patient;
   }
 
-  // Método exportado para uso em outros módulos (SchedulesModule, futuro AppointmentsModule)
+  // Facilita uso por outros módulos sem duplicar lógica
   async findDoctorOrFail(id: number): Promise<Doctor> {
     return this.findDoctor(id);
   }
@@ -151,23 +199,30 @@ export class UsersService {
   async update(id: number, dto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(id);
 
+    // Valida e-mail único em caso de alteração
     if (dto.email && dto.email !== user.email) {
       const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
       if (emailExists) throw new ConflictException(`E-mail ${dto.email} já está em uso.`);
     }
 
+    // Re-hash se a senha for alterada
     if (dto.password) {
       dto.password = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
     }
 
+    // Validações específicas por tipo
     if (user.type === UserType.DOCTOR && dto.crm) {
       const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
-      if (crmExists && crmExists.id !== id) throw new ConflictException(`CRM ${dto.crm} já está em uso.`);
+      if (crmExists && crmExists.id !== id) {
+        throw new ConflictException(`CRM ${dto.crm} já está em uso.`);
+      }
     }
 
     if (user.type === UserType.PATIENT && dto.cpf) {
       const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
-      if (cpfExists && cpfExists.id !== id) throw new ConflictException(`CPF ${dto.cpf} já está em uso.`);
+      if (cpfExists && cpfExists.id !== id) {
+        throw new ConflictException(`CPF ${dto.cpf} já está em uso.`);
+      }
     }
 
     if (dto.birthDate) this.validateBirthDateInPast(dto.birthDate);
@@ -178,14 +233,16 @@ export class UsersService {
 
   async remove(id: number): Promise<void> {
     const user = await this.findOne(id);
+
+    // Impede remoção se houver agendamentos ativos
     await this.checkActiveSchedules(id);
-    // Inativação em vez de remoção física para preservar histórico
+
+    // Soft delete (mantém histórico)
     user.isActive = false;
     await this.userRepository.save(user);
   }
 
-  // Verifica se o usuário tem agendamentos ativos (PENDING ou CONFIRMED)
-  // Extensível na Etapa 3 para incluir atendimentos e prontuários
+  // Verifica se o usuário possui agendamentos ativos
   private async checkActiveSchedules(userId: number): Promise<void> {
     const count = await this.userRepository.manager
       .getRepository('schedules')
@@ -195,7 +252,7 @@ export class UsersService {
         { id: userId, statuses: [ScheduleStatus.PENDING, ScheduleStatus.CONFIRMED] },
       )
       .getCount()
-      .catch(() => 0); // tabela pode não existir ainda
+      .catch(() => 0); // evita erro se tabela não existir
 
     if (count > 0) {
       throw new ConflictException(
@@ -206,6 +263,8 @@ export class UsersService {
 
   private validateBirthDateInPast(birthDate: string): void {
     const date = new Date(birthDate);
+
+    // Garante que a data seja válida e no passado
     if (date >= new Date()) {
       throw new BadRequestException('Data de nascimento deve ser uma data no passado.');
     }
@@ -216,8 +275,10 @@ export class UsersService {
       qb.orderBy(`${alias}.${defaultField}`, 'ASC');
       return;
     }
+
     const [field, direction] = sort.split(':');
     const dir = direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
     qb.orderBy(`${alias}.${field}`, dir);
   }
 }

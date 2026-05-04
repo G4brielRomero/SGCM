@@ -28,7 +28,7 @@ export class UserResponseDto {
   @ApiProperty({ example: '2026-01-01T10:00:00.000Z' })
   createdAt: Date;
 
-  // password e refreshToken omitidos intencionalmente
+  // password e refreshToken não é exposto por questão de segurança
 }
 
 @Exclude()

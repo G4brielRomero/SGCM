@@ -11,7 +11,7 @@ import { UsersController, DoctorsController, PatientsController } from './users.
   imports: [TypeOrmModule.forFeature([User, Doctor, Patient, Admin])],
   controllers: [UsersController, DoctorsController, PatientsController],
   providers: [UsersService],
-  // Exporta UsersService para SchedulesModule e futuros módulos (Etapa 3)
+  // Exporta UsersService para SchedulesModule
   exports: [UsersService],
 })
 export class UsersModule {}
