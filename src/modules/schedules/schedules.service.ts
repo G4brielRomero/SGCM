@@ -129,6 +129,11 @@ export class SchedulesService {
       );
     }
 
+    // Verifica conflito de horário ao confirmar — evita dois CONFIRMED no mesmo horário
+    if (newStatus === ScheduleStatus.CONFIRMED) {
+      await this.checkScheduleConflict(schedule.doctorId, schedule.scheduledAt.toISOString(), id);
+    }
+
     schedule.status = newStatus;
 
     if (newStatus === ScheduleStatus.CANCELLED) {
