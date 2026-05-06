@@ -35,7 +35,10 @@ export class SchedulesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar agendamentos', description: 'Lista paginada com filtros por doctorId, patientId, status, type e intervalo de datas.' })
+  @ApiOperation({
+    summary: 'Listar agendamentos',
+    description: 'Lista paginada com filtros por doctorId, patientId, status, type e intervalo de datas.',
+  })
   @ApiQuery({ name: 'doctorId', required: false, type: Number })
   @ApiQuery({ name: 'patientId', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: ScheduleStatus })
@@ -48,7 +51,13 @@ export class SchedulesController {
   @ApiResponse({ status: 200 })
   async findAll(@Query() query: FindSchedulesQueryDto) {
     const result = await this.schedulesService.findAll(query);
-    return { ...result, data: result.data.map((s) => plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true })) };
+
+    return {
+      ...result,
+      data: result.data.map((s) =>
+        plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true }),
+      ),
+    };
   }
 
   @Get(':id')
@@ -63,7 +72,10 @@ export class SchedulesController {
 
   @Put(':id')
   @ApiParam({ name: 'id', example: 1 })
-  @ApiOperation({ summary: 'Atualizar agendamento', description: 'Atualiza dados do agendamento. Não permite atualizar status por este endpoint.' })
+  @ApiOperation({
+    summary: 'Atualizar agendamento',
+    description: 'Atualiza dados do agendamento. Não permite atualizar status por este endpoint.',
+  })
   @ApiResponse({ status: 200, type: ScheduleResponseDto })
   @ApiResponse({ status: 400 })
   @ApiResponse({ status: 404 })
@@ -89,7 +101,10 @@ export class SchedulesController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiParam({ name: 'id', example: 1 })
-  @ApiOperation({ summary: 'Excluir agendamento', description: 'Agendamentos com status COMPLETED não podem ser excluídos.' })
+  @ApiOperation({
+    summary: 'Excluir agendamento',
+    description: 'Agendamentos com status COMPLETED não podem ser excluídos.',
+  })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 404 })
   @ApiResponse({ status: 409, description: 'Agendamento COMPLETED não pode ser excluído.' })
@@ -97,8 +112,6 @@ export class SchedulesController {
     await this.schedulesService.remove(id);
   }
 }
-
-// ─── Sub-recursos de /doctors e /patients ─────────────────────────────────────
 
 @ApiTags('Doctors')
 @Controller('doctors/:doctorId/schedules')
@@ -111,7 +124,14 @@ export class DoctorSchedulesController {
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   async findAll(@Param('doctorId', ParseIntPipe) doctorId: number, @Query() query: FindSchedulesQueryDto) {
-    return this.schedulesService.findByDoctor(doctorId, query);
+    const result = await this.schedulesService.findByDoctor(doctorId, query);
+
+    return {
+      ...result,
+      data: result.data.map((s) =>
+        plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true }),
+      ),
+    };
   }
 }
 
@@ -126,6 +146,13 @@ export class PatientSchedulesController {
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   async findAll(@Param('patientId', ParseIntPipe) patientId: number, @Query() query: FindSchedulesQueryDto) {
-    return this.schedulesService.findByPatient(patientId, query);
+    const result = await this.schedulesService.findByPatient(patientId, query);
+
+    return {
+      ...result,
+      data: result.data.map((s) =>
+        plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true }),
+      ),
+    };
   }
 }

@@ -31,28 +31,28 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto): Promise<User> {
-    // Garante que não exista outro usuário com o mesmo e-mail
     const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
     if (emailExists) {
       throw new ConflictException(`Já existe um usuário cadastrado com o e-mail ${dto.email}.`);
     }
 
-    // Criptografa a senha antes de salvar
     const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
 
-    // Direciona para criação conforme tipo de usuário
     if (dto.type === UserType.DOCTOR) {
       return this.createDoctor(dto, hashedPassword);
     }
+
     if (dto.type === UserType.PATIENT) {
       return this.createPatient(dto, hashedPassword);
     }
+
     return this.createAdmin(dto, hashedPassword);
   }
 
   private async createDoctor(dto: CreateUserDto, hashedPassword: string): Promise<Doctor> {
-    // Validações específicas de médico
-    if (!dto.crm) throw new BadRequestException('CRM é obrigatório para médicos.');
+    if (!dto.crm) {
+      throw new BadRequestException('CRM é obrigatório para médicos.');
+    }
 
     const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
     if (crmExists) {
@@ -70,9 +70,13 @@ export class UsersService {
   }
 
   private async createPatient(dto: CreateUserDto, hashedPassword: string): Promise<Patient> {
-    // Validações específicas de paciente
-    if (!dto.cpf) throw new BadRequestException('CPF é obrigatório para pacientes.');
-    if (!dto.birthDate) throw new BadRequestException('Data de nascimento é obrigatória para pacientes.');
+    if (!dto.cpf) {
+      throw new BadRequestException('CPF é obrigatório para pacientes.');
+    }
+
+    if (!dto.birthDate) {
+      throw new BadRequestException('Data de nascimento é obrigatória para pacientes.');
+    }
 
     this.validateBirthDateInPast(dto.birthDate);
 
@@ -93,7 +97,6 @@ export class UsersService {
   }
 
   private async createAdmin(dto: CreateUserDto, hashedPassword: string): Promise<Admin> {
-    // Admin não possui validações extras
     const admin = this.userRepository.create({
       name: dto.name,
       email: dto.email,
@@ -107,12 +110,14 @@ export class UsersService {
   async findAll(query: FindUsersQueryDto): Promise<PaginatedResult<User>> {
     const { page = 1, limit = 20, sort, search, type } = query;
 
-    // Query base: apenas usuários ativos
     const qb = this.userRepository
       .createQueryBuilder('user')
       .where('user.isActive = :isActive', { isActive: true });
 
-    if (type) qb.andWhere('user.type = :type', { type });
+    if (type) {
+      qb.andWhere('user.type = :type', { type });
+    }
+
     if (search) {
       qb.andWhere('user.name LIKE :search OR user.email LIKE :search', {
         search: `%${search}%`,
@@ -135,8 +140,13 @@ export class UsersService {
       .leftJoinAndSelect('doctor.specialties', 'specialty')
       .where('doctor.isActive = :isActive', { isActive: true });
 
-    if (specialtyId) qb.andWhere('specialty.id = :specialtyId', { specialtyId });
-    if (search) qb.andWhere('doctor.name LIKE :search', { search: `%${search}%` });
+    if (specialtyId) {
+      qb.andWhere('specialty.id = :specialtyId', { specialtyId });
+    }
+
+    if (search) {
+      qb.andWhere('doctor.name LIKE :search', { search: `%${search}%` });
+    }
 
     this.applySorting(qb, sort, 'doctor', 'name');
 
@@ -153,7 +163,9 @@ export class UsersService {
       .createQueryBuilder('patient')
       .where('patient.isActive = :isActive', { isActive: true });
 
-    if (search) qb.andWhere('patient.name LIKE :search', { search: `%${search}%` });
+    if (search) {
+      qb.andWhere('patient.name LIKE :search', { search: `%${search}%` });
+    }
 
     this.applySorting(qb, sort, 'patient', 'name');
 
@@ -164,9 +176,12 @@ export class UsersService {
   }
 
   async findOne(id: number): Promise<User> {
-    // Busca apenas usuários ativos
     const user = await this.userRepository.findOne({ where: { id, isActive: true } });
-    if (!user) throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
+
+    if (!user) {
+      throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
+    }
+
     return user;
   }
 
@@ -176,18 +191,25 @@ export class UsersService {
       relations: ['specialties'],
     });
 
-    if (!doctor) throw new NotFoundException(`Médico com id ${id} não foi encontrado.`);
+    if (!doctor) {
+      throw new NotFoundException(`Médico com id ${id} não foi encontrado.`);
+    }
+
     return doctor;
   }
 
   async findPatient(id: number): Promise<Patient> {
-    const patient = await this.patientRepository.findOne({ where: { id, isActive: true } });
+    const patient = await this.patientRepository.findOne({
+      where: { id, isActive: true },
+    });
 
-    if (!patient) throw new NotFoundException(`Paciente com id ${id} não foi encontrado.`);
+    if (!patient) {
+      throw new NotFoundException(`Paciente com id ${id} não foi encontrado.`);
+    }
+
     return patient;
   }
 
-  // Facilita uso por outros módulos sem duplicar lógica
   async findDoctorOrFail(id: number): Promise<Doctor> {
     return this.findDoctor(id);
   }
@@ -196,23 +218,28 @@ export class UsersService {
     return this.findPatient(id);
   }
 
+  async saveDoctor(doctor: Doctor): Promise<Doctor> {
+    return this.doctorRepository.save(doctor);
+  }
+
   async update(id: number, dto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(id);
 
-    // Valida e-mail único em caso de alteração
     if (dto.email && dto.email !== user.email) {
       const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
-      if (emailExists) throw new ConflictException(`E-mail ${dto.email} já está em uso.`);
+
+      if (emailExists) {
+        throw new ConflictException(`E-mail ${dto.email} já está em uso.`);
+      }
     }
 
-    // Re-hash se a senha for alterada
     if (dto.password) {
       dto.password = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
     }
 
-    // Validações específicas por tipo
     if (user.type === UserType.DOCTOR && dto.crm) {
       const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
+
       if (crmExists && crmExists.id !== id) {
         throw new ConflictException(`CRM ${dto.crm} já está em uso.`);
       }
@@ -220,12 +247,15 @@ export class UsersService {
 
     if (user.type === UserType.PATIENT && dto.cpf) {
       const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
+
       if (cpfExists && cpfExists.id !== id) {
         throw new ConflictException(`CPF ${dto.cpf} já está em uso.`);
       }
     }
 
-    if (dto.birthDate) this.validateBirthDateInPast(dto.birthDate);
+    if (dto.birthDate) {
+      this.validateBirthDateInPast(dto.birthDate);
+    }
 
     Object.assign(user, dto);
     return this.userRepository.save(user);
@@ -234,15 +264,12 @@ export class UsersService {
   async remove(id: number): Promise<void> {
     const user = await this.findOne(id);
 
-    // Impede remoção se houver agendamentos ativos
     await this.checkActiveSchedules(id);
 
-    // Soft delete (mantém histórico)
     user.isActive = false;
     await this.userRepository.save(user);
   }
 
-  // Verifica se o usuário possui agendamentos ativos
   private async checkActiveSchedules(userId: number): Promise<void> {
     const count = await this.userRepository.manager
       .getRepository('schedules')
@@ -252,7 +279,7 @@ export class UsersService {
         { id: userId, statuses: [ScheduleStatus.PENDING, ScheduleStatus.CONFIRMED] },
       )
       .getCount()
-      .catch(() => 0); // evita erro se tabela não existir
+      .catch(() => 0);
 
     if (count > 0) {
       throw new ConflictException(
@@ -264,7 +291,6 @@ export class UsersService {
   private validateBirthDateInPast(birthDate: string): void {
     const date = new Date(birthDate);
 
-    // Garante que a data seja válida e no passado
     if (date >= new Date()) {
       throw new BadRequestException('Data de nascimento deve ser uma data no passado.');
     }

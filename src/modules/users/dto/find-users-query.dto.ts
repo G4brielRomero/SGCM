@@ -1,5 +1,6 @@
+import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsPositive } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import { UserType } from '../entities/user.entity';
 
@@ -13,5 +14,8 @@ export class FindUsersQueryDto extends PaginationQueryDto {
 export class FindDoctorsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Filtrar por especialidade', example: 1 })
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
   specialtyId?: number;
 }
