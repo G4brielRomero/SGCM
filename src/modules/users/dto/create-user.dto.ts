@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserType } from '../entities/user.entity';
+import { IsCpf } from '../../../common/decorators/is-cpf.decorator';
 
 export class CreateUserDto {
   @ApiProperty({ description: 'Nome completo do usuário', example: 'Rafael Mendes' })
@@ -42,9 +43,8 @@ export class CreateUserDto {
   @ApiPropertyOptional({ description: 'CPF do paciente (obrigatório para PATIENT)', example: '123.456.789-09' })
   @ValidateIf((o) => o.type === UserType.PATIENT)
   @IsNotEmpty({ message: 'CPF é obrigatório para pacientes' })
-  @Matches(/^\d{3}\.\d{3}\.\d{3}-\d{2}$|^\d{11}$/, {
-    message: 'CPF deve estar no formato 000.000.000-00 ou 11 dígitos numéricos',
-  })
+  @IsCpf({ message: 'CPF informado é inválido' })
+  @IsCpf({ message: 'CPF inválido. Certifique-se de que os dígitos estão corretos e não utilize espaços.' })
   cpf?: string;
 
   @ApiPropertyOptional({ description: 'Data de nascimento (obrigatória para PATIENT)', example: '1990-06-15' })

@@ -27,7 +27,10 @@ export class UsersController {
   @ApiResponse({ status: 409, description: 'E-mail, CRM ou CPF já cadastrado.' })
   async create(@Body() dto: CreateUserDto) {
     const user = await this.usersService.create(dto);
-    return this.serialize(user);
+    return {
+      status: HttpStatus.CREATED,
+      ...this.serialize(user),
+    };
   }
 
   @Get()
@@ -63,14 +66,18 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({ summary: 'Inativar usuário', description: 'Realiza inativação lógica. Usuários com agendamentos ativos não podem ser removidos.' })
-  @ApiResponse({ status: 204, description: 'Usuário inativado.' })
+  @ApiResponse({ status: 200, description: 'Usuário inativado com sucesso.' })
   @ApiResponse({ status: 404, description: 'Usuário não encontrado.' })
   @ApiResponse({ status: 409, description: 'Usuário possui agendamentos ativos.' })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.usersService.remove(id);
+    return {
+      status: HttpStatus.OK,
+      message: 'Usuário inativado com sucesso.',
+    };
   }
 
   private serialize(user: any) {
