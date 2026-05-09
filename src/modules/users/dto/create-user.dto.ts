@@ -43,8 +43,7 @@ export class CreateUserDto {
   @ApiPropertyOptional({ description: 'CPF do paciente (obrigatório para PATIENT)', example: '123.456.789-09' })
   @ValidateIf((o) => o.type === UserType.PATIENT)
   @IsNotEmpty({ message: 'CPF é obrigatório para pacientes' })
-  @IsCpf({ message: 'CPF informado é inválido' })
-  @IsCpf({ message: 'CPF inválido. Certifique-se de que os dígitos estão corretos e não utilize espaços.' })
+  @IsCpf({ message: 'CPF inválido. Certifique-se de que os dígitos verificadores estão corretos.' })
   cpf?: string;
 
   @ApiPropertyOptional({ description: 'Data de nascimento (obrigatória para PATIENT)', example: '1990-06-15' })

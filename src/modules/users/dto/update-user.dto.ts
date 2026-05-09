@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsDateString, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsCpf } from '../../../common/decorators/is-cpf.decorator';
 
 // type não pode ser alterado após o cadastro (paciente não vira médico)
 export class UpdateUserDto {
@@ -25,11 +26,9 @@ export class UpdateUserDto {
   crm?: string;
 
   // Campos do Patient
-  @ApiPropertyOptional({ example: '111.222.333-44' })
+  @ApiPropertyOptional({ example: '123.456.789-09' })
   @IsOptional()
-  @Matches(/^\d{3}\.\d{3}\.\d{3}-\d{2}$|^\d{11}$/, {
-    message: 'CPF deve estar no formato 000.000.000-00 ou 11 dígitos numéricos',
-  })
+  @IsCpf({ message: 'CPF inválido. Certifique-se de que os dígitos verificadores estão corretos.' })
   cpf?: string;
 
   @ApiPropertyOptional({ example: '1985-03-20' })
