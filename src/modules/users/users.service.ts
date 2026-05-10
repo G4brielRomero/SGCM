@@ -124,7 +124,7 @@ export class UsersService {
       });
     }
 
-    this.applySorting(qb, sort, 'user', 'name');
+    this.applySorting(qb, sort, 'user', 'name', ['name', 'email', 'createdAt', 'updatedAt']);
 
     qb.skip((page - 1) * limit).take(limit);
 
@@ -148,7 +148,7 @@ export class UsersService {
       qb.andWhere('doctor.name LIKE :search', { search: `%${search}%` });
     }
 
-    this.applySorting(qb, sort, 'doctor', 'name');
+    this.applySorting(qb, sort, 'doctor', 'name', ['name', 'crm', 'createdAt', 'updatedAt']);
 
     qb.skip((page - 1) * limit).take(limit);
 
@@ -167,7 +167,7 @@ export class UsersService {
       qb.andWhere('patient.name LIKE :search', { search: `%${search}%` });
     }
 
-    this.applySorting(qb, sort, 'patient', 'name');
+    this.applySorting(qb, sort, 'patient', 'name', ['name', 'createdAt', 'updatedAt']);
 
     qb.skip((page - 1) * limit).take(limit);
 
@@ -180,6 +180,10 @@ export class UsersService {
 
     if (!user) {
       throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
+    }
+
+    if (user.type === UserType.DOCTOR) {
+      return this.findDoctor(id);
     }
 
     return user;
@@ -296,7 +300,13 @@ export class UsersService {
     }
   }
 
-  private applySorting(qb: any, sort: string | undefined, alias: string, defaultField: string): void {
+  private applySorting(
+    qb: any,
+    sort: string | undefined,
+    alias: string,
+    defaultField: string,
+    allowedFields: string[] = ['name', 'email', 'createdAt', 'updatedAt'],
+  ): void {
     if (!sort) {
       qb.orderBy(`${alias}.${defaultField}`, 'ASC');
       return;
@@ -304,7 +314,8 @@ export class UsersService {
 
     const [field, direction] = sort.split(':');
     const dir = direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+    const safeField = allowedFields.includes(field) ? field : defaultField;
 
-    qb.orderBy(`${alias}.${field}`, dir);
+    qb.orderBy(`${alias}.${safeField}`, dir);
   }
 }

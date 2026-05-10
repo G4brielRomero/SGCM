@@ -15,8 +15,8 @@ import { IsCpf } from '../../../common/decorators/is-cpf.decorator';
 
 export class CreateUserDto {
   @ApiProperty({ description: 'Nome completo do usuário', example: 'Rafael Mendes' })
-  @IsNotEmpty()
-  @IsString()
+  @IsNotEmpty({ message: 'Nome é obrigatório' })
+  @IsString({ message: 'Nome deve ser uma string' })
   name: string;
 
   @ApiProperty({ description: 'E-mail único no sistema', example: 'rafael@clinica.com' })

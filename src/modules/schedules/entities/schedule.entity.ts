@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   TableInheritance,
+  Index,
 } from 'typeorm';
 import { Doctor } from '../../users/entities/doctor.entity';
 import { Patient } from '../../users/entities/patient.entity';
@@ -34,6 +35,10 @@ export const ALLOWED_TRANSITIONS: Record<ScheduleStatus, ScheduleStatus[]> = {
 
 @Entity('schedules')
 @TableInheritance({ column: { type: 'varchar', name: 'type' } })
+@Index('uq_schedule_doctor_confirmed_time', ['doctorId', 'scheduledAt'], {
+  unique: true,
+  where: `status = 'CONFIRMED'`,
+})
 export class Schedule {
   @PrimaryGeneratedColumn()
   id: number;

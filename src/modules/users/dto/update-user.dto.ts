@@ -1,11 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsDateString, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { IsCpf } from '../../../common/decorators/is-cpf.decorator';
 
 // type não pode ser alterado após o cadastro (paciente não vira médico)
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'Rafael Mendes Atualizado' })
   @IsOptional()
+  @IsNotEmpty({ message: 'Nome não pode ser vazio' })
   @IsString()
   name?: string;
 
@@ -22,6 +23,7 @@ export class UpdateUserDto {
   // Campos do Doctor
   @ApiPropertyOptional({ example: '99999-RJ' })
   @IsOptional()
+  @IsNotEmpty({ message: 'CRM não pode ser vazio' })
   @IsString()
   crm?: string;
 

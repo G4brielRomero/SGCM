@@ -8,6 +8,7 @@ import { SpecialtiesService } from './specialties.service';
 import { CreateSpecialtyDto, SpecialtyResponseDto, UpdateSpecialtyDto } from './dto/specialty.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { AssociateSpecialtyDto } from './dto/specialty.dto';
+import { DoctorResponseDto } from '../users/dto/user-response.dto';
 
 @ApiTags('Specialties')
 @Controller('specialties')
@@ -71,7 +72,11 @@ export class SpecialtiesController {
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   async findDoctors(@Param('id', ParseIntPipe) id: number, @Query() query: PaginationQueryDto) {
-    return this.specialtiesService.findDoctorsBySpecialty(id, query);
+    const result = await this.specialtiesService.findDoctorsBySpecialty(id, query);
+    return {
+      ...result,
+      data: result.data.map((d) => plainToInstance(DoctorResponseDto, d, { excludeExtraneousValues: true })),
+    };
   }
 }
 
@@ -88,7 +93,11 @@ export class DoctorSpecialtiesController {
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   async findAll(@Param('doctorId', ParseIntPipe) doctorId: number, @Query() query: PaginationQueryDto) {
-    return this.specialtiesService.findDoctorSpecialties(doctorId, query);
+    const result = await this.specialtiesService.findDoctorSpecialties(doctorId, query);
+    return {
+      ...result,
+      data: result.data.map((s) => plainToInstance(SpecialtyResponseDto, s, { excludeExtraneousValues: true })),
+    };
   }
 
   @Post()

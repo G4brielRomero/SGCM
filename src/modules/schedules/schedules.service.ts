@@ -88,6 +88,7 @@ export class SchedulesService {
       page = 1,
       limit = 20,
       sort,
+      search,
       doctorId,
       patientId,
       status,
@@ -97,6 +98,14 @@ export class SchedulesService {
     } = query;
 
     const qb = this.scheduleRepository.createQueryBuilder('schedule');
+
+    if (search) {
+      qb.leftJoin('schedule.doctor', 'searchDoctor')
+        .leftJoin('schedule.patient', 'searchPatient')
+        .andWhere('searchDoctor.name LIKE :search OR searchPatient.name LIKE :search', {
+          search: `%${search}%`,
+        });
+    }
 
     if (doctorId) {
       qb.andWhere('schedule.doctorId = :doctorId', { doctorId });
@@ -277,13 +286,21 @@ export class SchedulesService {
     }
   }
 
-  private applySorting(qb: any, sort: string | undefined, alias: string, defaultField: string): void {
+  private applySorting(
+    qb: any,
+    sort: string | undefined,
+    alias: string,
+    defaultField: string,
+    allowedFields: string[] = ['scheduledAt', 'status', 'type', 'createdAt'],
+  ): void {
     if (!sort) {
       qb.orderBy(`${alias}.${defaultField}`, 'ASC');
       return;
     }
 
     const [field, direction] = sort.split(':');
-    qb.orderBy(`${alias}.${field}`, direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC');
+    const safeField = allowedFields.includes(field) ? field : defaultField;
+
+    qb.orderBy(`${alias}.${safeField}`, direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC');
   }
 }

@@ -11,6 +11,7 @@ import {
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Exclude, Expose, Type } from 'class-transformer';
 import { ScheduleStatus, ScheduleType } from '../entities/schedule.entity';
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export class CreateScheduleDto {
   @ApiProperty({
@@ -22,14 +23,14 @@ export class CreateScheduleDto {
 
   @ApiProperty({ description: 'ID do médico', example: 1 })
   @Type(() => Number)
-  @IsInt()
-  @IsPositive()
+  @IsInt({ message: 'doctorId deve ser um número inteiro' })
+  @IsPositive({ message: 'doctorId deve ser um número positivo' })
   doctorId: number;
 
   @ApiProperty({ description: 'ID do paciente', example: 2 })
   @Type(() => Number)
-  @IsInt()
-  @IsPositive()
+  @IsInt({ message: 'patientId deve ser um número inteiro' })
+  @IsPositive({ message: 'patientId deve ser um número positivo' })
   patientId: number;
 
   @ApiProperty({
@@ -116,7 +117,7 @@ export class UpdateScheduleStatusDto {
   cancellationReason?: string;
 }
 
-export class FindSchedulesQueryDto {
+export class FindSchedulesQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -150,25 +151,6 @@ export class FindSchedulesQueryDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number = 1;
-
-  @ApiPropertyOptional({ default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number = 20;
-
-  @ApiPropertyOptional({ example: 'scheduledAt:asc' })
-  @IsOptional()
-  @IsString()
-  sort?: string;
 }
 
 @Exclude()

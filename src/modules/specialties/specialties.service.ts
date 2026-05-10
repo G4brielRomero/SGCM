@@ -9,6 +9,7 @@ import { Specialty } from './entities/specialty.entity';
 import { CreateSpecialtyDto, UpdateSpecialtyDto } from './dto/specialty.dto';
 import { paginate, PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { UsersService } from '../users/users.service';
+import { FindDoctorsQueryDto } from '../users/dto/find-users-query.dto';
 
 @Injectable()
 export class SpecialtiesService {
@@ -143,28 +144,24 @@ export class SpecialtiesService {
   async findDoctorsBySpecialty(specialtyId: number, query: PaginationQueryDto) {
     await this.findOne(specialtyId);
 
-    const { page = 1, limit = 20 } = query;
-
-    const qb = this.specialtyRepository.manager
-      .getRepository('users')
-      .createQueryBuilder('doctor')
-      .innerJoin('doctor_specialties', 'ds', 'ds.doctorId = doctor.id')
-      .where('ds.specialtyId = :specialtyId AND doctor.isActive = 1', { specialtyId })
-      .skip((page - 1) * limit)
-      .take(limit);
-
-    const [data, total] = await qb.getManyAndCount();
-
-    return paginate(data, total, page, limit);
+    return this.usersService.findAllDoctors({ ...query, specialtyId } as FindDoctorsQueryDto);
   }
 
-  private applySorting(qb: any, sort: string | undefined, alias: string, defaultField: string): void {
+  private applySorting(
+    qb: any,
+    sort: string | undefined,
+    alias: string,
+    defaultField: string,
+    allowedFields: string[] = ['name', 'createdAt', 'updatedAt'],
+  ): void {
     if (!sort) {
       qb.orderBy(`${alias}.${defaultField}`, 'ASC');
       return;
     }
 
     const [field, direction] = sort.split(':');
-    qb.orderBy(`${alias}.${field}`, direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC');
+    const safeField = allowedFields.includes(field) ? field : defaultField;
+
+    qb.orderBy(`${alias}.${safeField}`, direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC');
   }
 }

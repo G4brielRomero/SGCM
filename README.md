@@ -14,11 +14,18 @@ API REST construída com NestJS + TypeORM + SQLite para gestão de usuários, es
 npm install
 
 # 2. Copiar variáveis de ambiente
+# Linux / macOS
 cp .env.example .env
+# Windows (PowerShell)
+Copy-Item .env.example .env
+# Windows (CMD)
+copy .env.example .env
 
 # 3. Iniciar em modo desenvolvimento
 npm run start:dev
 ```
+
+> **Obs.:** o arquivo `.env` é opcional — todos os valores possuem padrão no código (`PORT=3000`, `DATABASE_PATH=./database.db`, `BCRYPT_SALT_ROUNDS=12`).
 
 A API estará disponível em: http://localhost:3000  
 Documentação Swagger: http://localhost:3000/api
