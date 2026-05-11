@@ -1,0 +1,130 @@
+@startuml SGCM - Diagrama de Classes
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 13
+skinparam classBackgroundColor #FAFAFA
+skinparam classBorderColor #555
+skinparam arrowColor #333
+skinparam linetype ortho
+
+' ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserType {
+  ADMIN
+  DOCTOR
+  PATIENT
+}
+
+enum ScheduleType {
+  IN_PERSON
+  ONLINE
+  HOME
+}
+
+enum ScheduleStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+' ─── Hierarquia de Usuários (STI) ─────────────────────────────────────────────
+
+abstract class User {
+  +id: number
+  +name: string
+  +email: string
+  #password: string
+  +type: UserType
+  +isActive: boolean
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+class Admin {
+}
+
+class Doctor {
+  +crm: string
+}
+
+class Patient {
+  +cpf: string
+  +birthDate: string
+}
+
+User <|-- Admin
+User <|-- Doctor
+User <|-- Patient
+
+' ─── Especialidade ────────────────────────────────────────────────────────────
+
+class Specialty {
+  +id: number
+  +name: string
+  +description: string
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+Doctor "0..*" -- "0..*" Specialty : specialties >
+
+' ─── Hierarquia de Agendamentos (STI) ─────────────────────────────────────────
+
+abstract class Schedule {
+  +id: number
+  +scheduledAt: Date
+  +status: ScheduleStatus
+  +type: ScheduleType
+  +doctorId: number
+  +patientId: number
+  +cancelledAt: Date
+  +cancellationReason: string
+  +cancelledBy: number
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+class InPersonSchedule {
+  +room: string
+  +unit: string
+}
+
+class OnlineSchedule {
+  +accessLink: string
+  +platform: string
+}
+
+class HomeSchedule {
+  +fullAddress: string
+  +accessNotes: string
+}
+
+Schedule <|-- InPersonSchedule
+Schedule <|-- OnlineSchedule
+Schedule <|-- HomeSchedule
+
+' ─── Relacionamentos Schedule → User ──────────────────────────────────────────
+
+Doctor "1" <-- "0..*" Schedule : doctor
+Patient "1" <-- "0..*" Schedule : patient
+
+' ─── Notas ────────────────────────────────────────────────────────────────────
+
+note top of User
+  STI — tabela única <b>users</b>
+  discriminada pela coluna <b>type</b>
+end note
+
+note top of Schedule
+  STI — tabela única <b>schedules</b>
+  discriminada pela coluna <b>type</b>
+end note
+
+note on link
+  Tabela intermediária
+  <b>doctor_specialties</b>
+  (doctorId, specialtyId)
+end note
+
+@enduml

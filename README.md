@@ -1,98 +1,181 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# SGCM — Sistema de Gestão de Clínica Médica
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST construída com NestJS + TypeORM + SQLite para gestão de usuários, especialidades e agendamentos.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Requisitos
 
-## Description
+- Node.js 20.11.0 (use `nvm use` na raiz do projeto)
+- npm 10+
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Configuração Inicial
 
 ```bash
-$ npm install
+# 1. Instalar dependências
+npm install
+
+# 2. Copiar variáveis de ambiente
+# Linux / macOS
+cp .env.example .env
+# Windows (PowerShell)
+Copy-Item .env.example .env
+# Windows (CMD)
+copy .env.example .env
+
+# 3. Iniciar em modo desenvolvimento
+npm run start:dev
 ```
 
-## Compile and run the project
+> **Obs.:** o arquivo `.env` é opcional — todos os valores possuem padrão no código (`PORT=3000`, `DATABASE_PATH=./database.db`, `BCRYPT_SALT_ROUNDS=12`).
 
-```bash
-# development
-$ npm run start
+A API estará disponível em: http://localhost:3000  
+Documentação Swagger: http://localhost:3000/api
 
-# watch mode
-$ npm run start:dev
+## Versões Utilizadas
 
-# production mode
-$ npm run start:prod
+- NestJS: 11.x
+- TypeORM: 0.3.x
+- Node.js: 20.11.0
+- Banco de dados: SQLite (better-sqlite3)
+
+## Estrutura do Projeto
+
+```
+src/
+├── main.ts                    # Bootstrap da aplicação
+├── app.module.ts              # Módulo raiz
+├── common/
+│   ├── filters/
+│   │   └── http-exception.filter.ts   # Filtro global RFC 7807
+│   └── dto/
+│       └── pagination-query.dto.ts    # DTO e helpers de paginação
+└── modules/
+    ├── users/                 # Usuários (Admin, Doctor, Patient)
+    │   ├── entities/
+    │   ├── dto/
+    │   ├── users.controller.ts
+    │   ├── users.service.ts
+    │   └── users.module.ts
+    ├── specialties/           # Especialidades médicas
+    │   ├── entities/
+    │   ├── dto/
+    │   ├── specialties.controller.ts
+    │   ├── specialties.service.ts
+    │   └── specialties.module.ts
+    └── schedules/             # Agendamentos (IN_PERSON, ONLINE, HOME)
+        ├── entities/
+        ├── dto/
+        ├── schedules.controller.ts
+        ├── schedules.service.ts
+        └── schedules.module.ts
 ```
 
-## Run tests
+## Endpoints Principais
 
-```bash
-# unit tests
-$ npm run test
+### Usuários
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | /users | Criar usuário (ADMIN/DOCTOR/PATIENT) |
+| GET | /users | Listar com filtro por type |
+| GET | /users/:id | Buscar por ID |
+| PUT | /users/:id | Atualizar |
+| DELETE | /users/:id | Inativar (soft delete) |
 
-# e2e tests
-$ npm run test:e2e
+### Médicos
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | /doctors | Listar com especialidades |
+| GET | /doctors/:id | Buscar por ID |
+| GET | /doctors/:id/specialties | Especialidades do médico |
+| POST | /doctors/:id/specialties | Associar especialidade |
+| DELETE | /doctors/:id/specialties/:sid | Desassociar especialidade |
+| GET | /doctors/:id/schedules | Agendamentos do médico |
 
-# test coverage
-$ npm run test:cov
+### Pacientes
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | /patients | Listar pacientes |
+| GET | /patients/:id | Buscar por ID |
+| GET | /patients/:id/schedules | Agendamentos do paciente |
+
+### Especialidades
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | /specialties | Criar |
+| GET | /specialties | Listar |
+| GET | /specialties/:id | Buscar por ID |
+| PUT | /specialties/:id | Atualizar |
+| DELETE | /specialties/:id | Excluir |
+| GET | /specialties/:id/doctors | Médicos da especialidade |
+
+### Agendamentos
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | /schedules | Criar agendamento |
+| GET | /schedules | Listar com filtros |
+| GET | /schedules/:id | Buscar por ID |
+| PUT | /schedules/:id | Atualizar |
+| PATCH | /schedules/:id/status | Atualizar status (CONFIRMED/CANCELLED) |
+| DELETE | /schedules/:id | Excluir |
+
+## Decisões Arquiteturais
+
+### Estratégia de Herança: Single Table Inheritance (STI)
+- **User**: STI com coluna `type` discriminando ADMIN/DOCTOR/PATIENT em uma única tabela `users`
+- **Schedule**: STI com coluna `type` discriminando IN_PERSON/ONLINE/HOME em uma única tabela `schedules`
+- **Justificativa**: STI é adequado quando as subclasses compartilham muitos atributos e as consultas frequentemente precisam retornar registros mistos (ex: todos os agendamentos de um médico, independente da modalidade). O SQLite não tem suporte completo a `RETURNING`, tornando STI mais compatível que CTI.
+
+### Soft Delete de Usuários
+- Usuários são inativados (`isActive = false`) em vez de removidos fisicamente
+- Preserva histórico de agendamentos e referências
+- Listagens filtram automaticamente registros inativos
+
+### Exportação do UsersService
+- `UsersModule` exporta `UsersService` integralmente para uso em `SchedulesModule` e futuro `AppointmentsModule`
+- Métodos `findDoctorOrFail` e `findPatientOrFail` fornecem interface clara para outros módulos
+
+### Verificação de Unicidade
+- Feita no service antes de persistir (verificação explícita)
+- Produz mensagens de erro descritivas
+- Fallback no filtro global para erros de constraint do SQLite
+
+### Status de Agendamento
+- PENDING → CONFIRMED ou CANCELLED
+- CONFIRMED → CANCELLED (via API) ou COMPLETED (apenas via AppointmentsService na Etapa 3)
+- COMPLETED → nenhuma transição permitida
+- O valor COMPLETED é rejeitado no endpoint PATCH /schedules/:id/status
+
+### Campos cancelledBy e createdBy
+- Existem no modelo mas são nulos na Etapa 1
+- Serão preenchidos com `@CurrentUser()` na Etapa 2 após implementação do JWT
+
+## Formato de Erros (RFC 7807)
+
+```json
+{
+  "type": "https://sgcm.example.com/problems/not-found",
+  "title": "Recurso não encontrado",
+  "detail": "Médico com id 15 não foi encontrado.",
+  "instance": "/doctors/15",
+  "method": "GET",
+  "status": 404,
+  "timestamp": "2026-04-13T20:29:41.234Z"
+}
 ```
 
-## Deployment
+## Paginação
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Todos os endpoints de listagem retornam:
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```json
+{
+  "data": [],
+  "meta": {
+    "totalItems": 20,
+    "page": 2,
+    "limit": 10,
+    "totalPages": 5
+  }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Parâmetros: `page`, `limit`, `sort` (ex: `name:asc`), `search`
