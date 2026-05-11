@@ -6,6 +6,7 @@ import {
   ApiTags, ApiOperation, ApiResponse, ApiParam,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import { ProblemDetailDto } from '../../common/dto/problem-detail.dto';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -23,8 +24,8 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Criar usuário', description: 'Cria um usuário de qualquer perfil. Campos extras são exigidos conforme o tipo.' })
   @ApiResponse({ status: 201, description: 'Usuário criado.', type: UserResponseDto })
-  @ApiResponse({ status: 400, description: 'Dados inválidos.' })
-  @ApiResponse({ status: 409, description: 'E-mail, CRM ou CPF já cadastrado.' })
+  @ApiResponse({ status: 400, description: 'Dados inválidos.', type: ProblemDetailDto })
+  @ApiResponse({ status: 409, description: 'E-mail, CRM ou CPF já cadastrado.', type: ProblemDetailDto })
   async create(@Body() dto: CreateUserDto) {
     const user = await this.usersService.create(dto);
     return this.serialize(user);
@@ -44,7 +45,7 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'ID do usuário', example: 1 })
   @ApiOperation({ summary: 'Buscar usuário por ID' })
   @ApiResponse({ status: 200, type: UserResponseDto })
-  @ApiResponse({ status: 404, description: 'Usuário não encontrado.' })
+  @ApiResponse({ status: 404, description: 'Usuário não encontrado.', type: ProblemDetailDto })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const user = await this.usersService.findOne(id);
     return this.serialize(user);
@@ -54,9 +55,9 @@ export class UsersController {
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({ summary: 'Atualizar usuário' })
   @ApiResponse({ status: 200, type: UserResponseDto })
-  @ApiResponse({ status: 400, description: 'Dados inválidos.' })
-  @ApiResponse({ status: 404, description: 'Usuário não encontrado.' })
-  @ApiResponse({ status: 409, description: 'E-mail, CRM ou CPF já em uso.' })
+  @ApiResponse({ status: 400, description: 'Dados inválidos.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Usuário não encontrado.', type: ProblemDetailDto })
+  @ApiResponse({ status: 409, description: 'E-mail, CRM ou CPF já em uso.', type: ProblemDetailDto })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     const user = await this.usersService.update(id, dto);
     return this.serialize(user);
@@ -67,8 +68,8 @@ export class UsersController {
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({ summary: 'Inativar usuário', description: 'Realiza inativação lógica. Usuários com agendamentos ativos não podem ser removidos.' })
   @ApiResponse({ status: 204, description: 'Usuário inativado com sucesso.' })
-  @ApiResponse({ status: 404, description: 'Usuário não encontrado.' })
-  @ApiResponse({ status: 409, description: 'Usuário possui agendamentos ativos.' })
+  @ApiResponse({ status: 404, description: 'Usuário não encontrado.', type: ProblemDetailDto })
+  @ApiResponse({ status: 409, description: 'Usuário possui agendamentos ativos.', type: ProblemDetailDto })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.usersService.remove(id);
   }
@@ -112,7 +113,7 @@ export class DoctorsController {
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({ summary: 'Buscar médico por ID', description: 'Retorna o médico com suas especialidades.' })
   @ApiResponse({ status: 200, type: DoctorResponseDto })
-  @ApiResponse({ status: 404, description: 'Médico não encontrado.' })
+  @ApiResponse({ status: 404, description: 'Médico não encontrado.', type: ProblemDetailDto })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const doctor = await this.usersService.findDoctor(id);
     return plainToInstance(DoctorResponseDto, doctor, { excludeExtraneousValues: true });
@@ -144,7 +145,7 @@ export class PatientsController {
   @ApiParam({ name: 'id', example: 2 })
   @ApiOperation({ summary: 'Buscar paciente por ID' })
   @ApiResponse({ status: 200, type: PatientResponseDto })
-  @ApiResponse({ status: 404, description: 'Paciente não encontrado.' })
+  @ApiResponse({ status: 404, description: 'Paciente não encontrado.', type: ProblemDetailDto })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const patient = await this.usersService.findPatient(id);
     return plainToInstance(PatientResponseDto, patient, { excludeExtraneousValues: true });
