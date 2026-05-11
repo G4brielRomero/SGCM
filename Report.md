@@ -18,7 +18,7 @@ Murilo José Silva: Adicionando comentários para melhor entendimento, correçã
 
 João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorator
 
-2> Decisões Técnicas
+3> Decisões Técnicas
 
 1. Single Table Inheritance (STI) para a hierarquia de Usuários
    Decisão: Optamos por usar STI com uma tabela única chamada users e uma coluna type para diferenciar os três tipos de usuário: ADMIN, DOCTOR e PATIENT.
@@ -64,6 +64,66 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 
 8. Exportação do UsersService para o SchedulesModule
    Decisão: O UsersModule exporta o UsersService integralmente. O SchedulesModule o importa e injeta no SchedulesService via construtor.
+
+   Reflexões Arquiteturais e Respostas aos Requisitos
+
+1. Granularidade dos Controllers e Documentação
+   Decisão: Adotamos uma abordagem híbrida. Temos o `UsersController` para operações administrativas e CRUD genérico, enquanto `DoctorsController` e `PatientsController` oferecem rotas especializadas (ex: `/doctors/:id/specialties`).
+   Justificativa: Isso permite que a documentação do Swagger seja segmentada por perfil, facilitando o consumo da API. O `UsersController` lida com a criação polimórfica (recebendo o `type`), enquanto os controllers específicos retornam visões enriquecidas (como médicos com suas especialidades já carregadas), agregando valor real sobre uma consulta genérica de usuários.
+
+2. Dependências entre Módulos e Reutilização
+   Decisão: O `UsersModule` exporta o `UsersService` integralmente para o `SchedulesModule`.
+   Justificativa: Embora exportar o service inteiro exponha métodos de criação/remoção, optamos pela simplicidade nesta etapa. Para garantir o encapsulamento, o `SchedulesService` utiliza apenas métodos de busca (`findDoctorOrFail`, `findPatientOrFail`). Esta interface já foi projetada para ser reutilizada pelo `AppointmentsModule` na Etapa 3.
+
+3. DTOs Únicos com Validação Condicional
+   Decisão: Utilizamos um único `CreateScheduleDto` e `CreateUserDto` fazendo uso massivo de `@ValidateIf` do `class-validator`.
+   Justificativa: Optamos por essa estratégia para manter os endpoints de criação centralizados e simplificar o roteamento no NestJS. No `CreateScheduleDto`, campos como `accessLink` só são validados se o `type` for `ONLINE`. No Swagger, usamos `@ApiPropertyOptional` para indicar que esses campos dependem da modalidade escolhida, mantendo o contrato claro sem precisar de múltiplos endpoints de POST.
+
+4. Validação de CPF e Invariantes
+   Decisão: Implementamos um decorator customizado `@IsCpf` que valida o algoritmo completo do dígito verificador.
+   Justificativa: Apenas validar o formato (regex) seria insuficiente para um sistema médico onde a unicidade e veracidade do documento são críticas. As invariantes de negócio são verificadas em duas camadas: no DTO (formato e presença) e no Service (regras de domínio, como impedir agendamentos no passado ou duplicados), garantindo que o sistema seja "seguro por padrão".
+
+5. Erros de Validação e RFC 7807
+   Decisão: No `HttpExceptionFilter`, interceptamos o array de erros do `ValidationPipe`.
+   Justificativa: O padrão RFC 7807 exige um campo `detail` em string. Nossa estratégia concatena as mensagens de erro (ex: "CRM é obrigatório; E-mail inválido") em uma única string separada por ponto e vírgula. Isso mantém a compatibilidade com o padrão sem perder a informação de múltiplos erros de entrada.
+
+6. Unicidade: Service vs Banco de Dados
+   Decisão: Verificação dupla. O Service faz um `findOne` antes de salvar para retornar um erro 409 amigável, e o Banco possui índices únicos (parciais para agendamentos) como última linha de defesa.
+   Justificativa: O Service provê a melhor experiência para o desenvolvedor frontend com mensagens claras. O índice no banco (STI com `WHERE status = 'CONFIRMED'`) previne *race conditions* que a checagem em memória/service não conseguiria barrar em ambientes de alta concorrência.
+
+7. Atualização Parcial e Regras de Negócio
+   Decisão: O `UpdateUserDto` e `UpdateScheduleDto` são parciais, mas bloqueiam a alteração do campo `type`.
+   Justificativa: No domínio clínico, um Paciente não "evolui" para Médico no mesmo registro; são identidades distintas. A senha pode ser atualizada via `PUT`, mas a lógica de hash (bcrypt com custo 12) é garantida no Service. O custo 12 foi escolhido por ser o padrão de mercado que equilibra segurança contra força bruta e tempo de resposta do servidor.
+
+8. Entidade de Junção e Evolução (Doctor x Specialty)
+   Decisão: Nesta etapa, utilizamos a facilidade do TypeORM para gerenciar a tabela de junção.
+   Justificativa: Embora o diagrama preveja uma entidade explícita, a implementação atual atende aos requisitos de associar/desassociar. Para a Etapa 3, se houver necessidade de adicionar atributos à relação (como "data de obtenção do título"), evoluiremos para uma entidade de junção explícita.
+
+9. Ordenação Padrão
+   Decisão: Agendamentos são ordenados por `scheduledAt: ASC` (mais próximos primeiro). Usuários são ordenados por `name: ASC`.
+   Justificativa: Estabelecemos essa consistência no `PaginationQueryDto` e nos serviços para que as listagens sejam previsíveis para o usuário final, mesmo quando o parâmetro `sort` for omitido.
+
+10. Limitações do Modelo: Múltiplos Perfis
+    Reflexão: O modelo atual via STI com coluna `type` limita um usuário a ter apenas um papel. Se um Médico fosse também Administrador, precisaríamos migrar de STI para uma abordagem de "Roles" (Many-to-Many) ou permitir múltiplos registros com o mesmo e-mail (o que quebraria a unicidade atual). Reconhecemos essa limitação como uma simplificação de escopo para a Etapa 1.
+
+11. Gestão de Schema: Synchronize vs Migrations
+    Decisão: Para esta etapa de desenvolvimento, utilizamos `synchronize: true` no SQLite.
+    Justificativa: Como a equipe é pequena e o schema está mudando rapidamente na Etapa 1, o `synchronize` acelera o desenvolvimento. Para a Etapa 2 (Autenticação) e Etapa 3 (Produção), migraremos para arquivos de Migration para garantir rastreabilidade e evitar perda de dados.
+
+12. Cancelamento e Auditoria Prematura
+    Decisão: O campo `cancelledBy` foi incluído nas entidades, mas permanece nulo nesta etapa.
+    Justificativa: Sem o contexto de `@CurrentUser()`, não seria seguro preencher este campo. Na Etapa 2, o `SchedulesService` será atualizado para injetar o ID do usuário logado durante a operação de cancelamento, permitindo auditoria completa de quem desmarcou a consulta.
+
+13. Política de Comentários e Clean Code
+    Decisão: Priorizamos nomes de métodos expressivos (ex: `findDoctorOrFail`).
+    Justificativa: Comentários foram reservados apenas para explicar "o porquê" de decisões de negócio não óbvias (como a lógica do índice parcial único). A documentação técnica principal reside nos decorators do Swagger, que servem tanto para o código quanto para a interface de testes da API.
+
+14. Atomicidade das Operações
+    Reflexão: No SQLite, operações simples de uma única tabela são atômicas por padrão. Contudo, na Etapa 3, ao converter um `Schedule` para `Appointment`, usaremos `DataSource.transaction()` para garantir que o agendamento mude para `COMPLETED` apenas se o atendimento for gravado com sucesso, evitando estados inconsistentes no sistema.
+
+15. Ordem das Verificações (Early Return)
+    Decisão: Validamos primeiro a existência das entidades (`404 Not Found`) antes de validar regras de negócio complexas como conflitos de horário (`409 Conflict`).
+    Justificativa: Isso economiza processamento e segue o princípio de "falhar rápido" com o erro mais óbvio primeiro.
 
 4> Dificuldades e aprendizados
 
