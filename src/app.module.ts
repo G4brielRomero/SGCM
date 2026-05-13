@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from './modules/users/users.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -15,12 +16,13 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
         type: 'sqlite',
         database: config.get<string>('DATABASE_PATH', './database.db'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: true, // aceitável para desenvolvimento — ver relatório
+        synchronize: true,
       }),
     }),
     UsersModule,
     SpecialtiesModule,
     SchedulesModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

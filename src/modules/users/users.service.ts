@@ -24,14 +24,17 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+
     @InjectRepository(Doctor)
     private readonly doctorRepository: Repository<Doctor>,
+
     @InjectRepository(Patient)
     private readonly patientRepository: Repository<Patient>,
   ) {}
 
   async create(dto: CreateUserDto): Promise<User> {
     const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
+
     if (emailExists) {
       throw new ConflictException(`Já existe um usuário cadastrado com o e-mail ${dto.email}.`);
     }
@@ -55,6 +58,7 @@ export class UsersService {
     }
 
     const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
+
     if (crmExists) {
       throw new ConflictException(`Já existe um médico cadastrado com o CRM ${dto.crm}.`);
     }
@@ -81,6 +85,7 @@ export class UsersService {
     this.validateBirthDateInPast(dto.birthDate);
 
     const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
+
     if (cpfExists) {
       throw new ConflictException(`Já existe um paciente cadastrado com o CPF ${dto.cpf}.`);
     }
@@ -129,6 +134,7 @@ export class UsersService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
     return paginate(data, total, page, limit);
   }
 
@@ -153,6 +159,7 @@ export class UsersService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
     return paginate(data, total, page, limit);
   }
 
@@ -172,11 +179,14 @@ export class UsersService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
     return paginate(data, total, page, limit);
   }
 
   async findOne(id: number): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id, isActive: true } });
+    const user = await this.userRepository.findOne({
+      where: { id, isActive: true },
+    });
 
     if (!user) {
       throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
@@ -186,7 +196,35 @@ export class UsersService {
       return this.findDoctor(id);
     }
 
+    if (user.type === UserType.PATIENT) {
+      return this.findPatient(id);
+    }
+
     return user;
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { email },
+    });
+  }
+
+  async findActiveById(id: number): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id, isActive: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
+    }
+
+    return user;
+  }
+
+  async updateRefreshToken(userId: number, refreshTokenHash: string | null): Promise<void> {
+    await this.userRepository.update(userId, {
+      refreshToken: refreshTokenHash,
+    });
   }
 
   async findDoctor(id: number): Promise<Doctor> {
@@ -230,7 +268,9 @@ export class UsersService {
     const user = await this.findOne(id);
 
     if (dto.email && dto.email !== user.email) {
-      const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
+      const emailExists = await this.userRepository.findOne({
+        where: { email: dto.email },
+      });
 
       if (emailExists) {
         throw new ConflictException(`E-mail ${dto.email} já está em uso.`);
@@ -242,7 +282,9 @@ export class UsersService {
     }
 
     if (user.type === UserType.DOCTOR && dto.crm) {
-      const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
+      const crmExists = await this.doctorRepository.findOne({
+        where: { crm: dto.crm },
+      });
 
       if (crmExists && crmExists.id !== id) {
         throw new ConflictException(`CRM ${dto.crm} já está em uso.`);
@@ -250,7 +292,9 @@ export class UsersService {
     }
 
     if (user.type === UserType.PATIENT && dto.cpf) {
-      const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
+      const cpfExists = await this.patientRepository.findOne({
+        where: { cpf: dto.cpf },
+      });
 
       if (cpfExists && cpfExists.id !== id) {
         throw new ConflictException(`CPF ${dto.cpf} já está em uso.`);
@@ -262,6 +306,7 @@ export class UsersService {
     }
 
     Object.assign(user, dto);
+
     return this.userRepository.save(user);
   }
 
@@ -271,6 +316,7 @@ export class UsersService {
     await this.checkActiveSchedules(id);
 
     user.isActive = false;
+
     await this.userRepository.save(user);
   }
 
@@ -280,7 +326,10 @@ export class UsersService {
       .createQueryBuilder('schedule')
       .where(
         '(schedule.doctorId = :id OR schedule.patientId = :id) AND schedule.status IN (:...statuses)',
-        { id: userId, statuses: [ScheduleStatus.PENDING, ScheduleStatus.CONFIRMED] },
+        {
+          id: userId,
+          statuses: [ScheduleStatus.PENDING, ScheduleStatus.CONFIRMED],
+        },
       )
       .getCount()
       .catch(() => 0);

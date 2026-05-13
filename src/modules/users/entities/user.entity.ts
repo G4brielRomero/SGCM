@@ -5,7 +5,6 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   TableInheritance,
-  OneToMany,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 
@@ -28,7 +27,7 @@ export class User {
   email: string;
 
   @Column()
-  @Exclude() // nunca exposto em respostas pois é um dados sensivel
+  @Exclude()
   password: string;
 
   @Column({ type: 'varchar' })
@@ -36,6 +35,10 @@ export class User {
 
   @Column({ default: true })
   isActive: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  @Exclude()
+  refreshToken: string | null;
 
   @CreateDateColumn()
   createdAt: Date;
