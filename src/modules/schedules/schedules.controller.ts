@@ -1,8 +1,24 @@
 import {
-  Controller, Get, Post, Body, Param, Delete, Put, Patch, Query,
-  HttpCode, HttpStatus, ParseIntPipe,
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  Put,
+  Patch,
+  Query,
+  HttpCode,
+  HttpStatus,
+  ParseIntPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { ProblemDetailDto } from '../../common/dto/problem-detail.dto';
 import { SchedulesService } from './schedules.service';
@@ -13,87 +29,135 @@ import {
   UpdateScheduleDto,
   UpdateScheduleStatusDto,
 } from './dto/schedule.dto';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { UserPayload } from '../auth/types/user-payload.interface';
+import { UserType } from '../users/entities/user.entity';
+
+@ApiBearerAuth()
 @ApiTags('Schedules')
 @Controller('schedules')
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
   @Post()
+  @Roles(UserType.ADMIN, UserType.PATIENT)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Criar agendamento',
-    description: 'Cria um agendamento em uma das três modalidades (IN_PERSON, ONLINE, HOME). Status inicial é sempre PENDING.',
+    description: 'ADMIN pode criar para qualquer paciente. PATIENT só pode criar para si mesmo.',
   })
   @ApiResponse({ status: 201, type: ScheduleResponseDto })
   @ApiResponse({ status: 400, description: 'Dados inválidos ou data no passado.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Sem permissão para criar este agendamento.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Médico ou paciente não encontrado.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Conflito de horário para o médico informado.', type: ProblemDetailDto })
-  async create(@Body() dto: CreateScheduleDto) {
-    const schedule = await this.schedulesService.create(dto);
-    return plainToInstance(ScheduleResponseDto, schedule, { excludeExtraneousValues: true });
+  async create(
+    @Body() dto: CreateScheduleDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const schedule = await this.schedulesService.create(dto, currentUser);
+
+    return plainToInstance(ScheduleResponseDto, schedule, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Get()
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiOperation({
     summary: 'Listar agendamentos',
-    description: 'Lista paginada com filtros por doctorId, patientId, status, type e intervalo de datas.',
+    description: 'ADMIN visualiza todos. DOCTOR visualiza os próprios. PATIENT visualiza os próprios.',
   })
   @ApiResponse({ status: 200, description: 'Lista paginada de agendamentos.' })
-  async findAll(@Query() query: FindSchedulesQueryDto) {
-    const result = await this.schedulesService.findAll(query);
+  async findAll(
+    @Query() query: FindSchedulesQueryDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const result = await this.schedulesService.findAll(query, currentUser);
 
     return {
       ...result,
       data: result.data.map((s) =>
-        plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true }),
+        plainToInstance(ScheduleResponseDto, s, {
+          excludeExtraneousValues: true,
+        }),
       ),
     };
   }
 
   @Get(':id')
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiParam({ name: 'id', example: 1 })
-  @ApiOperation({ summary: 'Buscar agendamento por ID' })
+  @ApiOperation({
+    summary: 'Buscar agendamento por ID',
+    description: 'ADMIN visualiza qualquer agendamento. DOCTOR e PATIENT só visualizam os próprios.',
+  })
   @ApiResponse({ status: 200, type: ScheduleResponseDto })
+  @ApiResponse({ status: 403, description: 'Sem permissão para acessar este agendamento.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    const schedule = await this.schedulesService.findOne(id);
-    return plainToInstance(ScheduleResponseDto, schedule, { excludeExtraneousValues: true });
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const schedule = await this.schedulesService.findOne(id, currentUser);
+
+    return plainToInstance(ScheduleResponseDto, schedule, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Put(':id')
+  @Roles(UserType.ADMIN)
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({
     summary: 'Atualizar agendamento',
-    description: 'Atualiza dados do agendamento. Não permite atualizar status por este endpoint.',
+    description: 'Apenas ADMIN pode atualizar dados do agendamento.',
   })
   @ApiResponse({ status: 200, type: ScheduleResponseDto })
   @ApiResponse({ status: 400, description: 'Dados inválidos ou modalidade alterada.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto) {
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateScheduleDto,
+  ) {
     const schedule = await this.schedulesService.update(id, dto);
-    return plainToInstance(ScheduleResponseDto, schedule, { excludeExtraneousValues: true });
+
+    return plainToInstance(ScheduleResponseDto, schedule, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Patch(':id/status')
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({
     summary: 'Atualizar status do agendamento',
-    description: 'Aceita apenas CONFIRMED e CANCELLED. COMPLETED é gerado automaticamente ao criar um Appointment (Etapa 3).',
+    description: 'ADMIN pode alterar qualquer status permitido. DOCTOR altera status dos próprios. PATIENT apenas cancela os próprios.',
   })
   @ApiResponse({ status: 200, type: ScheduleResponseDto })
-  @ApiResponse({ status: 400, description: 'Transição de status inválida ou valor COMPLETED enviado.', type: ProblemDetailDto })
+  @ApiResponse({ status: 400, description: 'Transição de status inválida.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Sem permissão para alterar este status.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
-  async updateStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleStatusDto) {
-    const schedule = await this.schedulesService.updateStatus(id, dto);
-    return plainToInstance(ScheduleResponseDto, schedule, { excludeExtraneousValues: true });
+  async updateStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateScheduleStatusDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const schedule = await this.schedulesService.updateStatus(id, dto, currentUser);
+
+    return plainToInstance(ScheduleResponseDto, schedule, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Delete(':id')
+  @Roles(UserType.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({
     summary: 'Excluir agendamento',
-    description: 'Agendamentos com status COMPLETED não podem ser excluídos.',
+    description: 'Apenas ADMIN pode excluir agendamentos.',
   })
   @ApiResponse({ status: 204, description: 'Agendamento excluído com sucesso.' })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
@@ -103,45 +167,69 @@ export class SchedulesController {
   }
 }
 
+@ApiBearerAuth()
 @ApiTags('Doctors')
 @Controller('doctors/:doctorId/schedules')
 export class DoctorSchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
   @Get()
+  @Roles(UserType.ADMIN, UserType.DOCTOR)
   @ApiParam({ name: 'doctorId', example: 1 })
-  @ApiOperation({ summary: 'Listar agendamentos de um médico' })
+  @ApiOperation({
+    summary: 'Listar agendamentos de um médico',
+    description: 'ADMIN pode listar qualquer médico. DOCTOR só pode listar os próprios agendamentos.',
+  })
   @ApiResponse({ status: 200, description: 'Lista paginada de agendamentos do médico.' })
+  @ApiResponse({ status: 403, description: 'Sem permissão para acessar os agendamentos deste médico.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Médico não encontrado.', type: ProblemDetailDto })
-  async findAll(@Param('doctorId', ParseIntPipe) doctorId: number, @Query() query: FindSchedulesQueryDto) {
-    const result = await this.schedulesService.findByDoctor(doctorId, query);
+  async findAll(
+    @Param('doctorId', ParseIntPipe) doctorId: number,
+    @Query() query: FindSchedulesQueryDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const result = await this.schedulesService.findByDoctor(doctorId, query, currentUser);
 
     return {
       ...result,
       data: result.data.map((s) =>
-        plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true }),
+        plainToInstance(ScheduleResponseDto, s, {
+          excludeExtraneousValues: true,
+        }),
       ),
     };
   }
 }
 
+@ApiBearerAuth()
 @ApiTags('Patients')
 @Controller('patients/:patientId/schedules')
 export class PatientSchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
   @Get()
+  @Roles(UserType.ADMIN, UserType.PATIENT)
   @ApiParam({ name: 'patientId', example: 2 })
-  @ApiOperation({ summary: 'Listar agendamentos de um paciente' })
+  @ApiOperation({
+    summary: 'Listar agendamentos de um paciente',
+    description: 'ADMIN pode listar qualquer paciente. PATIENT só pode listar seus próprios agendamentos.',
+  })
   @ApiResponse({ status: 200, description: 'Lista paginada de agendamentos do paciente.' })
+  @ApiResponse({ status: 403, description: 'Sem permissão para acessar os agendamentos deste paciente.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Paciente não encontrado.', type: ProblemDetailDto })
-  async findAll(@Param('patientId', ParseIntPipe) patientId: number, @Query() query: FindSchedulesQueryDto) {
-    const result = await this.schedulesService.findByPatient(patientId, query);
+  async findAll(
+    @Param('patientId', ParseIntPipe) patientId: number,
+    @Query() query: FindSchedulesQueryDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const result = await this.schedulesService.findByPatient(patientId, query, currentUser);
 
     return {
       ...result,
       data: result.data.map((s) =>
-        plainToInstance(ScheduleResponseDto, s, { excludeExtraneousValues: true }),
+        plainToInstance(ScheduleResponseDto, s, {
+          excludeExtraneousValues: true,
+        }),
       ),
     };
   }

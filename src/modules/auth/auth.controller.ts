@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,8 +15,9 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshTokenDto, AuthResponseDto } from './dto/auth.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+import { Roles } from './decorators/roles.decorator';
 import { UserPayload } from './types/user-payload.interface';
 import {
   DoctorResponseDto,
@@ -31,6 +31,7 @@ import { UserType } from '../users/entities/user.entity';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Realizar login' })
@@ -39,6 +40,7 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renovar token de acesso' })
@@ -48,7 +50,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Realizar logout' })
@@ -57,7 +59,7 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Retornar usuário autenticado' })
   async me(@CurrentUser() user: UserPayload) {

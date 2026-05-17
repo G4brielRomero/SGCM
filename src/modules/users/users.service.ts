@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,6 +17,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { FindDoctorsQueryDto, FindUsersQueryDto } from './dto/find-users-query.dto';
 import { paginate, PaginatedResult } from '../../common/dto/pagination-query.dto';
 import { ScheduleStatus } from '../schedules/entities/schedule.entity';
+import { UserPayload } from '../auth/types/user-payload.interface';
 
 const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS ?? '12', 10);
 
@@ -183,7 +185,11 @@ export class UsersService {
     return paginate(data, total, page, limit);
   }
 
-  async findOne(id: number): Promise<User> {
+  async findOne(id: number, currentUser?: UserPayload): Promise<User> {
+    if (currentUser) {
+      this.ensureCanAccessUser(id, currentUser);
+    }
+
     const user = await this.userRepository.findOne({
       where: { id, isActive: true },
     });
@@ -197,7 +203,7 @@ export class UsersService {
     }
 
     if (user.type === UserType.PATIENT) {
-      return this.findPatient(id);
+      return this.findPatient(id, currentUser);
     }
 
     return user;
@@ -240,7 +246,11 @@ export class UsersService {
     return doctor;
   }
 
-  async findPatient(id: number): Promise<Patient> {
+  async findPatient(id: number, currentUser?: UserPayload): Promise<Patient> {
+    if (currentUser?.type === UserType.PATIENT && currentUser.sub !== id) {
+      throw new ForbiddenException('Você não tem permissão para acessar este paciente.');
+    }
+
     const patient = await this.patientRepository.findOne({
       where: { id, isActive: true },
     });
@@ -264,7 +274,11 @@ export class UsersService {
     return this.doctorRepository.save(doctor);
   }
 
-  async update(id: number, dto: UpdateUserDto): Promise<User> {
+  async update(id: number, dto: UpdateUserDto, currentUser?: UserPayload): Promise<User> {
+    if (currentUser) {
+      this.ensureCanAccessUser(id, currentUser);
+    }
+
     const user = await this.findOne(id);
 
     if (dto.email && dto.email !== user.email) {
@@ -318,6 +332,18 @@ export class UsersService {
     user.isActive = false;
 
     await this.userRepository.save(user);
+  }
+
+  private ensureCanAccessUser(userId: number, currentUser: UserPayload): void {
+    if (currentUser.type === UserType.ADMIN) {
+      return;
+    }
+
+    if (currentUser.sub === userId) {
+      return;
+    }
+
+    throw new ForbiddenException('Você não tem permissão para acessar este usuário.');
   }
 
   private async checkActiveSchedules(userId: number): Promise<void> {
