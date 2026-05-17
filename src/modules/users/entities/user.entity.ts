@@ -40,6 +40,10 @@ export class User {
   @Exclude()
   refreshToken: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  @Exclude()
+  refreshTokenJti: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

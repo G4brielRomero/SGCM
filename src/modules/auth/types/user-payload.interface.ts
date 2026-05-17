@@ -4,4 +4,5 @@ export interface UserPayload {
   sub: number;
   email: string;
   type: UserType;
+  jti: string;
 }

@@ -227,9 +227,14 @@ export class UsersService {
     return user;
   }
 
-  async updateRefreshToken(userId: number, refreshTokenHash: string | null): Promise<void> {
+  async updateRefreshToken(
+    userId: number,
+    refreshTokenHash: string | null,
+    refreshTokenJti: string | null,
+  ): Promise<void> {
     await this.userRepository.update(userId, {
       refreshToken: refreshTokenHash,
+      refreshTokenJti,
     });
   }
 

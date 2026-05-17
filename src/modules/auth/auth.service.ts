@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import type { StringValue } from 'ms';
+import { randomUUID } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { LoginDto } from './dto/auth.dto';
@@ -35,14 +36,19 @@ export class AuthService {
 
     const user = await this.usersService.findActiveById(payload.sub);
 
-    if (!user.refreshToken) {
+    if (!user.refreshToken || !user.refreshTokenJti) {
+      throw new UnauthorizedException('Refresh token inválido ou já utilizado.');
+    }
+
+    if (user.refreshTokenJti !== payload.jti) {
+      await this.usersService.updateRefreshToken(user.id, null, null);
       throw new UnauthorizedException('Refresh token inválido ou já utilizado.');
     }
 
     const isRefreshValid = await bcrypt.compare(refreshToken, user.refreshToken);
 
     if (!isRefreshValid) {
-      await this.usersService.updateRefreshToken(user.id, null);
+      await this.usersService.updateRefreshToken(user.id, null, null);
       throw new UnauthorizedException('Refresh token inválido ou já utilizado.');
     }
 
@@ -50,7 +56,7 @@ export class AuthService {
   }
 
   async logout(user: UserPayload): Promise<void> {
-    await this.usersService.updateRefreshToken(user.sub, null);
+    await this.usersService.updateRefreshToken(user.sub, null, null);
   }
 
   async me(user: UserPayload): Promise<User> {
@@ -74,18 +80,28 @@ export class AuthService {
   }
 
   private async generateAndSaveTokens(user: User) {
-    const payload: UserPayload = {
+    const basePayload = {
       sub: user.id,
       email: user.email,
       type: user.type,
     };
 
-    const accessToken = await this.jwtService.signAsync(payload, {
+    const accessPayload: UserPayload = {
+      ...basePayload,
+      jti: randomUUID(),
+    };
+
+    const refreshPayload: UserPayload = {
+      ...basePayload,
+      jti: randomUUID(),
+    };
+
+    const accessToken = await this.jwtService.signAsync(accessPayload, {
       secret: this.getAccessSecret(),
       expiresIn: this.getAccessExpiresIn(),
     });
 
-    const refreshToken = await this.jwtService.signAsync(payload, {
+    const refreshToken = await this.jwtService.signAsync(refreshPayload, {
       secret: this.getRefreshSecret(),
       expiresIn: this.getRefreshExpiresIn(),
     });
@@ -95,7 +111,11 @@ export class AuthService {
       this.getBcryptSaltRounds(),
     );
 
-    await this.usersService.updateRefreshToken(user.id, refreshTokenHash);
+    await this.usersService.updateRefreshToken(
+      user.id,
+      refreshTokenHash,
+      refreshPayload.jti,
+    );
 
     return {
       accessToken,
