@@ -65,7 +65,7 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 8. Exportação do UsersService para o SchedulesModule
    Decisão: O UsersModule exporta o UsersService integralmente. O SchedulesModule o importa e injeta no SchedulesService via construtor.
 
-   Reflexões Arquiteturais e Respostas aos Requisitos
+-> Reflexões Arquiteturais e Respostas aos Requisitos
 
 1. Granularidade dos Controllers e Documentação
    Decisão: Adotamos uma abordagem híbrida. Temos o `UsersController` para operações administrativas e CRUD genérico, enquanto `DoctorsController` e `PatientsController` oferecem rotas especializadas (ex: `/doctors/:id/specialties`).
@@ -124,9 +124,28 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 15. Ordem das Verificações (Early Return)
     Decisão: Validamos primeiro a existência das entidades (`404 Not Found`) antes de validar regras de negócio complexas como conflitos de horário (`409 Conflict`).
     Justificativa: Isso economiza processamento e segue o princípio de "falhar rápido" com o erro mais óbvio primeiro.
+   
+-> Interceptors e Padronização
+
+      Detecção de Respostas de Listagem
+   Implementamos a detecção verificando se o objeto retornado possui as propriedades `data` e `meta`. Escolhemos essa abordagem por ser a mais eficiente e escalável; ela não exige que o desenvolvedor adicione decorators manuais em cada método de listagem e garante que qualquer novo endpoint paginado adicionado na Etapa 3 seja automaticamente formatado pelo interceptor.
+
+      Ordem de Execução dos Interceptors
+   Configuramos o `ClassSerializerInterceptor` antes do `TransformInterceptor` no `main.ts`. Como no NestJS a execução no fluxo de resposta segue o padrão de pilha (LIFO), o TransformInterceptor envelopa o objeto primeiro e o Serializer atua por último. Nossos testes confirmaram que o Serializer percorre o envelope de forma recursiva, removendo campos marcados com `@Exclude()` (como o password) mesmo eles estando agora dentro da chave `data`.
+
+      Tratamento de Respostas sem Corpo
+   O interceptor verifica se o status da resposta é `204` ou se o conteúdo retornado é `null`/`undefined`. Nestes casos, ele retorna o dado original sem modificação. Isso é fundamental para respeitar a semântica do protocolo HTTP, garantindo que operações que não devem possuir corpo (como inativações bem-sucedidas) permaneçam vazias.
+
+      Logs em Casos de Exceção
+   Validamos que o `LoggingMiddleware` continua registrando o tempo de processamento corretamente mesmo quando ocorre uma exceção. Isso acontece porque o middleware monitora o evento `finish` da resposta do Express, que é disparado pelo `HttpExceptionFilter` ao enviar o erro padronizado ao cliente.
+
+      Expansão do Exception Filter
+   O filtro agora trata explicitamente `UnauthorizedException` e `ForbiddenException`. Isso garante que falhas de segurança forneçam detalhes claros no formato RFC 7807, permitindo que o frontend identifique se o erro é por falta de login (401) ou falta de privilégios administrativos (403).
+
 
 4> Dificuldades e aprendizados
 
 Durante o desenvolvimento do projeto, uma das principais dificuldades foi entender a linguagem, desde a estrutura até as funções que a própria linguagem e biblioteca fornecem. Mesmo tendo assistido às aulas práticas, quando realmente começamos a desenvolver surgiram várias dificuldades, principalmente por ser muita coisa novapara aprender ao mesmo tempo.
 A separação e estrutura do código também foi uma dificuldade, principalmente no começo, quando ainda não tínhamos entendido muito bem como organizar o projeto. Ficamos em dúvida se deixávamos tudo em uma pasta só ou se fazíamos a separação correta por módulos, controllers, services e DTOs. Com conversas entre o grupo, pesquisas e dúvidas tiradas com o professor, conseguimos reorganizar e estruturar melhor o projeto. Entender o funcionamento do Swagger na aplicação também foi uma dificuldade. Apesar de o NestJS já possuir integração com o Swagger, utilizar os decorators corretamente e entender como documentar os endpoints acabou sendo uma dificuldade no início. Com testes e prática, conseguimos compreender melhor como ele funciona.
 A decisão entre inativar ou deletar um usuário também foi bastante discutida entre o grupo, pois tínhamos dúvidas sobre qual seria a melhor abordagem no momento da implementação. Após conversarmos, decidimos optar pela inativação para preservar os registros e manter a integridade das informações do sistema.
+
