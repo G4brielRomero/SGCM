@@ -124,29 +124,23 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 15. Ordem das Verificações (Early Return)
     Decisão: Validamos primeiro a existência das entidades (`404 Not Found`) antes de validar regras de negócio complexas como conflitos de horário (`409 Conflict`).
     Justificativa: Isso economiza processamento e segue o princípio de "falhar rápido" com o erro mais óbvio primeiro.
+   
+-> Interceptors e Padronização
 
--> Implementação de Interceptors e Padronização de Respostas
+      Detecção de Respostas de Listagem
+   Implementamos a detecção verificando se o objeto retornado possui as propriedades `data` e `meta`. Escolhemos essa abordagem por ser a mais eficiente e escalável; ela não exige que o desenvolvedor adicione decorators manuais em cada método de listagem e garante que qualquer novo endpoint paginado adicionado na Etapa 3 seja automaticamente formatado pelo interceptor.
 
-1. Detecção de Respostas de Listagem
-   Decisão: O `TransformInterceptor` verifica a presença simultânea das chaves `data` e `meta` no objeto retornado pelo handler.
-   Justificativa: Esta abordagem é a mais flexível pois não exige a criação de classes de wrapper adicionais ou o uso de decorators em cada método do controller. Ela reaproveita a estrutura de paginação já implementada na Etapa 1, apenas enriquecendo o objeto `meta` existente. Para a Etapa 3, essa solução escala bem, pois qualquer novo endpoint que siga o padrão de paginação será automaticamente reconhecido e formatado corretamente pelo interceptor.
+      Ordem de Execução dos Interceptors
+   Configuramos o `ClassSerializerInterceptor` antes do `TransformInterceptor` no `main.ts`. Como no NestJS a execução no fluxo de resposta segue o padrão de pilha (LIFO), o TransformInterceptor envelopa o objeto primeiro e o Serializer atua por último. Nossos testes confirmaram que o Serializer percorre o envelope de forma recursiva, removendo campos marcados com `@Exclude()` (como o password) mesmo eles estando agora dentro da chave `data`.
 
-2. Ordem de Execução e Serialização
-   Decisão: Registramos o `ClassSerializerInterceptor` antes do `TransformInterceptor` no `main.ts`.
-   Reflexão Técnica: No NestJS, interceptores globais funcionam como uma pilha (LIFO no pós-handler). Ao registrar o `ClassSerializerInterceptor` primeiro, ele se torna a "casca externa". O `TransformInterceptor` envolve os dados no envelope `{ data, meta }`, e então o `ClassSerializerInterceptor` processa esse objeto final. 
-   Resultado do Teste: Em testes com o endpoint de usuários, o campo `password` (marcado com `@Exclude`) permaneceu oculto. Isso ocorre porque o serializador do NestJS percorre o objeto de forma recursiva; mesmo que o DTO esteja dentro da chave `data`, as regras de exclusão continuam sendo aplicadas corretamente.
+      Tratamento de Respostas sem Corpo
+   O interceptor verifica se o status da resposta é `204` ou se o conteúdo retornado é `null`/`undefined`. Nestes casos, ele retorna o dado original sem modificação. Isso é fundamental para respeitar a semântica do protocolo HTTP, garantindo que operações que não devem possuir corpo (como inativações bem-sucedidas) permaneçam vazias.
 
-3. Tratamento de Respostas sem Corpo
-   Decisão: O interceptor verifica o `response.statusCode` e o valor de retorno do handler.
-   Justificativa: Se o status for `204` ou o dado for `null`/`undefined`, o interceptor retorna o dado original sem processamento. Isso preserva a semântica do protocolo HTTP, evitando que uma operação de deleção bem-sucedida (que não deve retornar corpo) acabe enviando um objeto de metadados acidentalmente.
+      Logs em Casos de Exceção
+   Validamos que o `LoggingMiddleware` continua registrando o tempo de processamento corretamente mesmo quando ocorre uma exceção. Isso acontece porque o middleware monitora o evento `finish` da resposta do Express, que é disparado pelo `HttpExceptionFilter` ao enviar o erro padronizado ao cliente.
 
-4. Registro de Logs em Cenários de Exceção
-   Reflexão sobre Logging: O `LoggingMiddleware` captura o evento `finish` do objeto de resposta. 
-   Conclusão dos Testes: Mesmo quando uma exceção ocorre (ex: 404 Not Found) e é capturada pelo `HttpExceptionFilter`, o ciclo de vida da requisição HTTP é finalizado pelo Express enviando a resposta de erro. O middleware de log continua funcionando corretamente, registrando o tempo total de processamento, pois ele não depende do sucesso do handler, mas sim do encerramento da resposta no socket.
-
-5. Expansão do Exception Filter para Segurança
-   Revisão: Atualizamos o `HttpExceptionFilter` para tratar explicitamente `UnauthorizedException` (401) e `ForbiddenException` (403).
-   Justificativa: Com a introdução da autenticação, erros de "Token Inválido" ou "Acesso Negado por Perfil" tornam-se comuns. O filtro agora fornece mensagens claras seguindo o RFC 7807, garantindo que o frontend possa diferenciar um erro de login de um erro de permissão administrativa de forma programática através do campo `type`.
+      Expansão do Exception Filter
+   O filtro agora trata explicitamente `UnauthorizedException` e `ForbiddenException`. Isso garante que falhas de segurança forneçam detalhes claros no formato RFC 7807, permitindo que o frontend identifique se o erro é por falta de login (401) ou falta de privilégios administrativos (403).
 
 
 4> Dificuldades e aprendizados
@@ -154,3 +148,4 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 Durante o desenvolvimento do projeto, uma das principais dificuldades foi entender a linguagem, desde a estrutura até as funções que a própria linguagem e biblioteca fornecem. Mesmo tendo assistido às aulas práticas, quando realmente começamos a desenvolver surgiram várias dificuldades, principalmente por ser muita coisa novapara aprender ao mesmo tempo.
 A separação e estrutura do código também foi uma dificuldade, principalmente no começo, quando ainda não tínhamos entendido muito bem como organizar o projeto. Ficamos em dúvida se deixávamos tudo em uma pasta só ou se fazíamos a separação correta por módulos, controllers, services e DTOs. Com conversas entre o grupo, pesquisas e dúvidas tiradas com o professor, conseguimos reorganizar e estruturar melhor o projeto. Entender o funcionamento do Swagger na aplicação também foi uma dificuldade. Apesar de o NestJS já possuir integração com o Swagger, utilizar os decorators corretamente e entender como documentar os endpoints acabou sendo uma dificuldade no início. Com testes e prática, conseguimos compreender melhor como ele funciona.
 A decisão entre inativar ou deletar um usuário também foi bastante discutida entre o grupo, pois tínhamos dúvidas sobre qual seria a melhor abordagem no momento da implementação. Após conversarmos, decidimos optar pela inativação para preservar os registros e manter a integridade das informações do sistema.
+
