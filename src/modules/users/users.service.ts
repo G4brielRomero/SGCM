@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,6 +17,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { FindDoctorsQueryDto, FindUsersQueryDto } from './dto/find-users-query.dto';
 import { paginate, PaginatedResult } from '../../common/dto/pagination-query.dto';
 import { ScheduleStatus } from '../schedules/entities/schedule.entity';
+import { UserPayload } from '../auth/types/user-payload.interface';
 
 const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS ?? '12', 10);
 
@@ -24,14 +26,17 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+
     @InjectRepository(Doctor)
     private readonly doctorRepository: Repository<Doctor>,
+
     @InjectRepository(Patient)
     private readonly patientRepository: Repository<Patient>,
   ) {}
 
   async create(dto: CreateUserDto): Promise<User> {
     const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
+
     if (emailExists) {
       throw new ConflictException(`Já existe um usuário cadastrado com o e-mail ${dto.email}.`);
     }
@@ -55,6 +60,7 @@ export class UsersService {
     }
 
     const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
+
     if (crmExists) {
       throw new ConflictException(`Já existe um médico cadastrado com o CRM ${dto.crm}.`);
     }
@@ -81,6 +87,7 @@ export class UsersService {
     this.validateBirthDateInPast(dto.birthDate);
 
     const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
+
     if (cpfExists) {
       throw new ConflictException(`Já existe um paciente cadastrado com o CPF ${dto.cpf}.`);
     }
@@ -129,6 +136,7 @@ export class UsersService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
     return paginate(data, total, page, limit);
   }
 
@@ -153,6 +161,7 @@ export class UsersService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
     return paginate(data, total, page, limit);
   }
 
@@ -172,11 +181,18 @@ export class UsersService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
     return paginate(data, total, page, limit);
   }
 
-  async findOne(id: number): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id, isActive: true } });
+  async findOne(id: number, currentUser?: UserPayload): Promise<User> {
+    if (currentUser) {
+      this.ensureCanAccessUser(id, currentUser);
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id, isActive: true },
+    });
 
     if (!user) {
       throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
@@ -186,7 +202,40 @@ export class UsersService {
       return this.findDoctor(id);
     }
 
+    if (user.type === UserType.PATIENT) {
+      return this.findPatient(id, currentUser);
+    }
+
     return user;
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { email },
+    });
+  }
+
+  async findActiveById(id: number): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id, isActive: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuário com id ${id} não foi encontrado.`);
+    }
+
+    return user;
+  }
+
+  async updateRefreshToken(
+    userId: number,
+    refreshTokenHash: string | null,
+    refreshTokenJti: string | null,
+  ): Promise<void> {
+    await this.userRepository.update(userId, {
+      refreshToken: refreshTokenHash,
+      refreshTokenJti,
+    });
   }
 
   async findDoctor(id: number): Promise<Doctor> {
@@ -202,7 +251,11 @@ export class UsersService {
     return doctor;
   }
 
-  async findPatient(id: number): Promise<Patient> {
+  async findPatient(id: number, currentUser?: UserPayload): Promise<Patient> {
+    if (currentUser?.type === UserType.PATIENT && currentUser.sub !== id) {
+      throw new ForbiddenException('Você não tem permissão para acessar este paciente.');
+    }
+
     const patient = await this.patientRepository.findOne({
       where: { id, isActive: true },
     });
@@ -226,11 +279,17 @@ export class UsersService {
     return this.doctorRepository.save(doctor);
   }
 
-  async update(id: number, dto: UpdateUserDto): Promise<User> {
+  async update(id: number, dto: UpdateUserDto, currentUser?: UserPayload): Promise<User> {
+    if (currentUser) {
+      this.ensureCanAccessUser(id, currentUser);
+    }
+
     const user = await this.findOne(id);
 
     if (dto.email && dto.email !== user.email) {
-      const emailExists = await this.userRepository.findOne({ where: { email: dto.email } });
+      const emailExists = await this.userRepository.findOne({
+        where: { email: dto.email },
+      });
 
       if (emailExists) {
         throw new ConflictException(`E-mail ${dto.email} já está em uso.`);
@@ -242,7 +301,9 @@ export class UsersService {
     }
 
     if (user.type === UserType.DOCTOR && dto.crm) {
-      const crmExists = await this.doctorRepository.findOne({ where: { crm: dto.crm } });
+      const crmExists = await this.doctorRepository.findOne({
+        where: { crm: dto.crm },
+      });
 
       if (crmExists && crmExists.id !== id) {
         throw new ConflictException(`CRM ${dto.crm} já está em uso.`);
@@ -250,7 +311,9 @@ export class UsersService {
     }
 
     if (user.type === UserType.PATIENT && dto.cpf) {
-      const cpfExists = await this.patientRepository.findOne({ where: { cpf: dto.cpf } });
+      const cpfExists = await this.patientRepository.findOne({
+        where: { cpf: dto.cpf },
+      });
 
       if (cpfExists && cpfExists.id !== id) {
         throw new ConflictException(`CPF ${dto.cpf} já está em uso.`);
@@ -262,6 +325,7 @@ export class UsersService {
     }
 
     Object.assign(user, dto);
+
     return this.userRepository.save(user);
   }
 
@@ -271,7 +335,20 @@ export class UsersService {
     await this.checkActiveSchedules(id);
 
     user.isActive = false;
+
     await this.userRepository.save(user);
+  }
+
+  private ensureCanAccessUser(userId: number, currentUser: UserPayload): void {
+    if (currentUser.type === UserType.ADMIN) {
+      return;
+    }
+
+    if (currentUser.sub === userId) {
+      return;
+    }
+
+    throw new ForbiddenException('Você não tem permissão para acessar este usuário.');
   }
 
   private async checkActiveSchedules(userId: number): Promise<void> {
@@ -280,7 +357,10 @@ export class UsersService {
       .createQueryBuilder('schedule')
       .where(
         '(schedule.doctorId = :id OR schedule.patientId = :id) AND schedule.status IN (:...statuses)',
-        { id: userId, statuses: [ScheduleStatus.PENDING, ScheduleStatus.CONFIRMED] },
+        {
+          id: userId,
+          statuses: [ScheduleStatus.PENDING, ScheduleStatus.CONFIRMED],
+        },
       )
       .getCount()
       .catch(() => 0);
