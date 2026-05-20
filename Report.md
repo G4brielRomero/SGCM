@@ -65,7 +65,7 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 8. Exportação do UsersService para o SchedulesModule
    Decisão: O UsersModule exporta o UsersService integralmente. O SchedulesModule o importa e injeta no SchedulesService via construtor.
 
-   Reflexões Arquiteturais e Respostas aos Requisitos
+-> Reflexões Arquiteturais e Respostas aos Requisitos
 
 1. Granularidade dos Controllers e Documentação
    Decisão: Adotamos uma abordagem híbrida. Temos o `UsersController` para operações administrativas e CRUD genérico, enquanto `DoctorsController` e `PatientsController` oferecem rotas especializadas (ex: `/doctors/:id/specialties`).
@@ -124,6 +124,30 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 15. Ordem das Verificações (Early Return)
     Decisão: Validamos primeiro a existência das entidades (`404 Not Found`) antes de validar regras de negócio complexas como conflitos de horário (`409 Conflict`).
     Justificativa: Isso economiza processamento e segue o princípio de "falhar rápido" com o erro mais óbvio primeiro.
+
+-> Implementação de Interceptors e Padronização de Respostas
+
+1. Detecção de Respostas de Listagem
+   Decisão: O `TransformInterceptor` verifica a presença simultânea das chaves `data` e `meta` no objeto retornado pelo handler.
+   Justificativa: Esta abordagem é a mais flexível pois não exige a criação de classes de wrapper adicionais ou o uso de decorators em cada método do controller. Ela reaproveita a estrutura de paginação já implementada na Etapa 1, apenas enriquecendo o objeto `meta` existente. Para a Etapa 3, essa solução escala bem, pois qualquer novo endpoint que siga o padrão de paginação será automaticamente reconhecido e formatado corretamente pelo interceptor.
+
+2. Ordem de Execução e Serialização
+   Decisão: Registramos o `ClassSerializerInterceptor` antes do `TransformInterceptor` no `main.ts`.
+   Reflexão Técnica: No NestJS, interceptores globais funcionam como uma pilha (LIFO no pós-handler). Ao registrar o `ClassSerializerInterceptor` primeiro, ele se torna a "casca externa". O `TransformInterceptor` envolve os dados no envelope `{ data, meta }`, e então o `ClassSerializerInterceptor` processa esse objeto final. 
+   Resultado do Teste: Em testes com o endpoint de usuários, o campo `password` (marcado com `@Exclude`) permaneceu oculto. Isso ocorre porque o serializador do NestJS percorre o objeto de forma recursiva; mesmo que o DTO esteja dentro da chave `data`, as regras de exclusão continuam sendo aplicadas corretamente.
+
+3. Tratamento de Respostas sem Corpo
+   Decisão: O interceptor verifica o `response.statusCode` e o valor de retorno do handler.
+   Justificativa: Se o status for `204` ou o dado for `null`/`undefined`, o interceptor retorna o dado original sem processamento. Isso preserva a semântica do protocolo HTTP, evitando que uma operação de deleção bem-sucedida (que não deve retornar corpo) acabe enviando um objeto de metadados acidentalmente.
+
+4. Registro de Logs em Cenários de Exceção
+   Reflexão sobre Logging: O `LoggingMiddleware` captura o evento `finish` do objeto de resposta. 
+   Conclusão dos Testes: Mesmo quando uma exceção ocorre (ex: 404 Not Found) e é capturada pelo `HttpExceptionFilter`, o ciclo de vida da requisição HTTP é finalizado pelo Express enviando a resposta de erro. O middleware de log continua funcionando corretamente, registrando o tempo total de processamento, pois ele não depende do sucesso do handler, mas sim do encerramento da resposta no socket.
+
+5. Expansão do Exception Filter para Segurança
+   Revisão: Atualizamos o `HttpExceptionFilter` para tratar explicitamente `UnauthorizedException` (401) e `ForbiddenException` (403).
+   Justificativa: Com a introdução da autenticação, erros de "Token Inválido" ou "Acesso Negado por Perfil" tornam-se comuns. O filtro agora fornece mensagens claras seguindo o RFC 7807, garantindo que o frontend possa diferenciar um erro de login de um erro de permissão administrativa de forma programática através do campo `type`.
+
 
 4> Dificuldades e aprendizados
 
