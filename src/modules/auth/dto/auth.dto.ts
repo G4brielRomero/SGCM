@@ -13,16 +13,16 @@ export class LoginDto {
 }
 
 export class RefreshTokenDto {
-  @ApiProperty({ example: 'cole_o_refresh_token_aqui' })
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYWRtaW5Ac2djbS5jb20iLCJ0eXBlIjoiQURNSU4iLCJqdGkiOiJkZWYwMTIzNC01Njc4LTkwYWItY2RlZi0xMjM0NTY3ODkwYWIiLCJpYXQiOjE3MTYwMDAwMDAsImV4cCI6MTcxNjYwNDgwMH0.refresh_signature_example' })
   @IsNotEmpty({ message: 'Refresh token é obrigatório' })
   @IsString()
   refreshToken: string;
 }
 
 export class AuthResponseDto {
-  @ApiProperty({ example: 'access_token_jwt' })
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYWRtaW5Ac2djbS5jb20iLCJ0eXBlIjoiQURNSU4iLCJqdGkiOiJhYmMxMjM0NS02Nzg5LTBhYmMtZGVmMS0yMzQ1Njc4OTBhYmMiLCJpYXQiOjE3MTYwMDAwMDAsImV4cCI6MTcxNjAwMDkwMH0.access_signature_example' })
   accessToken: string;
 
-  @ApiProperty({ example: 'refresh_token_jwt' })
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYWRtaW5Ac2djbS5jb20iLCJ0eXBlIjoiQURNSU4iLCJqdGkiOiJkZWYwMTIzNC01Njc4LTkwYWItY2RlZi0xMjM0NTY3ODkwYWIiLCJpYXQiOjE3MTYwMDAwMDAsImV4cCI6MTcxNjYwNDgwMH0.refresh_signature_example' })
   refreshToken: string;
 }

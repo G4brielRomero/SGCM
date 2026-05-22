@@ -72,7 +72,9 @@ export class Schedule {
   @Column({ type: 'text', nullable: true })
   cancellationReason: string;
 
-  // será feito na parte 2
+  @Column({ nullable: true })
+  createdBy: number;
+
   @Column({ nullable: true })
   cancelledBy: number;
 

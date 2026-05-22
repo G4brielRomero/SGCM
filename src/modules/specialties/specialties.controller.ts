@@ -27,9 +27,11 @@ import { AssociateSpecialtyDto } from './dto/specialty.dto';
 import { DoctorResponseDto } from '../users/dto/user-response.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserType } from '../users/entities/user.entity';
+import { ApiEnvelopeResponse, ApiPaginatedResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 
 @ApiBearerAuth()
 @ApiTags('Specialties')
+@ApiUnauthorizedResponse()
 @Controller('specialties')
 export class SpecialtiesController {
   constructor(private readonly specialtiesService: SpecialtiesService) {}
@@ -41,7 +43,7 @@ export class SpecialtiesController {
     summary: 'Criar especialidade',
     description: 'Apenas ADMIN pode criar especialidades.',
   })
-  @ApiResponse({ status: 201, type: SpecialtyResponseDto })
+  @ApiEnvelopeResponse(SpecialtyResponseDto, 201, 'Especialidade criada.')
   @ApiResponse({ status: 400, description: 'Dados inválidos.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Nome já cadastrado.', type: ProblemDetailDto })
   async create(@Body() dto: CreateSpecialtyDto) {
@@ -58,7 +60,7 @@ export class SpecialtiesController {
     summary: 'Listar especialidades',
     description: 'Qualquer usuário autenticado pode listar especialidades.',
   })
-  @ApiResponse({ status: 200 })
+  @ApiPaginatedResponse(SpecialtyResponseDto, 'Lista paginada de especialidades.')
   async findAll(@Query() query: PaginationQueryDto) {
     const result = await this.specialtiesService.findAll(query);
 
@@ -79,7 +81,7 @@ export class SpecialtiesController {
     summary: 'Buscar especialidade por ID',
     description: 'Qualquer usuário autenticado pode buscar uma especialidade.',
   })
-  @ApiResponse({ status: 200, type: SpecialtyResponseDto })
+  @ApiEnvelopeResponse(SpecialtyResponseDto, 200, 'Especialidade encontrada.')
   @ApiResponse({ status: 404, description: 'Especialidade não encontrada.', type: ProblemDetailDto })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const s = await this.specialtiesService.findOne(id);
@@ -96,7 +98,7 @@ export class SpecialtiesController {
     summary: 'Atualizar especialidade',
     description: 'Apenas ADMIN pode atualizar especialidades.',
   })
-  @ApiResponse({ status: 200, type: SpecialtyResponseDto })
+  @ApiEnvelopeResponse(SpecialtyResponseDto, 200, 'Especialidade atualizada.')
   @ApiResponse({ status: 404, description: 'Especialidade não encontrada.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Nome já em uso.', type: ProblemDetailDto })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSpecialtyDto) {
@@ -129,7 +131,7 @@ export class SpecialtiesController {
     summary: 'Listar médicos de uma especialidade',
     description: 'Qualquer usuário autenticado pode visualizar médicos por especialidade.',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de médicos da especialidade.' })
+  @ApiPaginatedResponse(DoctorResponseDto, 'Lista paginada de médicos da especialidade.')
   @ApiResponse({ status: 404, description: 'Especialidade não encontrada.', type: ProblemDetailDto })
   async findDoctors(@Param('id', ParseIntPipe) id: number, @Query() query: PaginationQueryDto) {
     const result = await this.specialtiesService.findDoctorsBySpecialty(id, query);
@@ -147,6 +149,7 @@ export class SpecialtiesController {
 
 @ApiBearerAuth()
 @ApiTags('Doctors')
+@ApiUnauthorizedResponse()
 @Controller('doctors/:doctorId/specialties')
 export class DoctorSpecialtiesController {
   constructor(private readonly specialtiesService: SpecialtiesService) {}
@@ -158,7 +161,7 @@ export class DoctorSpecialtiesController {
     summary: 'Listar especialidades de um médico',
     description: 'Qualquer usuário autenticado pode visualizar especialidades de médicos.',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de especialidades do médico.' })
+  @ApiPaginatedResponse(SpecialtyResponseDto, 'Lista paginada de especialidades do médico.')
   @ApiResponse({ status: 404, description: 'Médico não encontrado.', type: ProblemDetailDto })
   async findAll(@Param('doctorId', ParseIntPipe) doctorId: number, @Query() query: PaginationQueryDto) {
     const result = await this.specialtiesService.findDoctorSpecialties(doctorId, query);
