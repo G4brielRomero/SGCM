@@ -33,9 +33,11 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserPayload } from '../auth/types/user-payload.interface';
 import { UserType } from '../users/entities/user.entity';
+import { ApiEnvelopeResponse, ApiPaginatedResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 
 @ApiBearerAuth()
 @ApiTags('Schedules')
+@ApiUnauthorizedResponse()
 @Controller('schedules')
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
@@ -47,7 +49,7 @@ export class SchedulesController {
     summary: 'Criar agendamento',
     description: 'ADMIN pode criar para qualquer paciente. PATIENT só pode criar para si mesmo.',
   })
-  @ApiResponse({ status: 201, type: ScheduleResponseDto })
+  @ApiEnvelopeResponse(ScheduleResponseDto, 201, 'Agendamento criado.')
   @ApiResponse({ status: 400, description: 'Dados inválidos ou data no passado.', type: ProblemDetailDto })
   @ApiResponse({ status: 403, description: 'Sem permissão para criar este agendamento.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Médico ou paciente não encontrado.', type: ProblemDetailDto })
@@ -69,7 +71,7 @@ export class SchedulesController {
     summary: 'Listar agendamentos',
     description: 'ADMIN visualiza todos. DOCTOR visualiza os próprios. PATIENT visualiza os próprios.',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de agendamentos.' })
+  @ApiPaginatedResponse(ScheduleResponseDto, 'Lista paginada de agendamentos.')
   async findAll(
     @Query() query: FindSchedulesQueryDto,
     @CurrentUser() currentUser: UserPayload,
@@ -93,7 +95,7 @@ export class SchedulesController {
     summary: 'Buscar agendamento por ID',
     description: 'ADMIN visualiza qualquer agendamento. DOCTOR e PATIENT só visualizam os próprios.',
   })
-  @ApiResponse({ status: 200, type: ScheduleResponseDto })
+  @ApiEnvelopeResponse(ScheduleResponseDto, 200, 'Agendamento encontrado.')
   @ApiResponse({ status: 403, description: 'Sem permissão para acessar este agendamento.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
   async findOne(
@@ -114,7 +116,7 @@ export class SchedulesController {
     summary: 'Atualizar agendamento',
     description: 'Apenas ADMIN pode atualizar dados do agendamento.',
   })
-  @ApiResponse({ status: 200, type: ScheduleResponseDto })
+  @ApiEnvelopeResponse(ScheduleResponseDto, 200, 'Agendamento atualizado.')
   @ApiResponse({ status: 400, description: 'Dados inválidos ou modalidade alterada.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
   async update(
@@ -135,7 +137,7 @@ export class SchedulesController {
     summary: 'Atualizar status do agendamento',
     description: 'ADMIN pode alterar qualquer status permitido. DOCTOR altera status dos próprios. PATIENT apenas cancela os próprios.',
   })
-  @ApiResponse({ status: 200, type: ScheduleResponseDto })
+  @ApiEnvelopeResponse(ScheduleResponseDto, 200, 'Status atualizado.')
   @ApiResponse({ status: 400, description: 'Transição de status inválida.', type: ProblemDetailDto })
   @ApiResponse({ status: 403, description: 'Sem permissão para alterar este status.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
@@ -169,6 +171,7 @@ export class SchedulesController {
 
 @ApiBearerAuth()
 @ApiTags('Doctors')
+@ApiUnauthorizedResponse()
 @Controller('doctors/:doctorId/schedules')
 export class DoctorSchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
@@ -180,7 +183,7 @@ export class DoctorSchedulesController {
     summary: 'Listar agendamentos de um médico',
     description: 'ADMIN pode listar qualquer médico. DOCTOR só pode listar os próprios agendamentos.',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de agendamentos do médico.' })
+  @ApiPaginatedResponse(ScheduleResponseDto, 'Lista paginada de agendamentos do médico.')
   @ApiResponse({ status: 403, description: 'Sem permissão para acessar os agendamentos deste médico.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Médico não encontrado.', type: ProblemDetailDto })
   async findAll(
@@ -203,6 +206,7 @@ export class DoctorSchedulesController {
 
 @ApiBearerAuth()
 @ApiTags('Patients')
+@ApiUnauthorizedResponse()
 @Controller('patients/:patientId/schedules')
 export class PatientSchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
@@ -214,7 +218,7 @@ export class PatientSchedulesController {
     summary: 'Listar agendamentos de um paciente',
     description: 'ADMIN pode listar qualquer paciente. PATIENT só pode listar seus próprios agendamentos.',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de agendamentos do paciente.' })
+  @ApiPaginatedResponse(ScheduleResponseDto, 'Lista paginada de agendamentos do paciente.')
   @ApiResponse({ status: 403, description: 'Sem permissão para acessar os agendamentos deste paciente.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Paciente não encontrado.', type: ProblemDetailDto })
   async findAll(

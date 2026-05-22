@@ -25,10 +25,28 @@ copy .env.example .env
 npm run start:dev
 ```
 
-> **Obs.:** o arquivo `.env` é opcional — todos os valores possuem padrão no código (`PORT=3000`, `DATABASE_PATH=./database.db`, `BCRYPT_SALT_ROUNDS=12`).
+> **Obs.:** o arquivo `.env` é opcional para a maioria dos valores — `PORT`, `DATABASE_PATH`, `BCRYPT_SALT_ROUNDS`, `JWT_EXPIRES_IN` e `JWT_REFRESH_EXPIRES_IN` possuem padrão no código. Porém, **`JWT_SECRET` é obrigatório em produção**; sem ele a aplicação falha na inicialização. Em desenvolvimento, o valor padrão do `.env.example` é suficiente.
 
 A API estará disponível em: http://localhost:3000  
 Documentação Swagger: http://localhost:3000/api
+
+## Dados de Teste (Seed)
+
+Para popular o banco com dados iniciais:
+
+```bash
+npm run seed
+```
+
+Credenciais dos usuários criados pelo seed (senha igual para todos):
+
+| Perfil  | Nome              | E-mail             | Senha      |
+|---------|-------------------|--------------------|------------|
+| ADMIN   | Admin Sistema     | admin@sgcm.com     | senha@123  |
+| DOCTOR  | Dr. Rafael Mendes | rafael@sgcm.com    | senha@123  |
+| DOCTOR  | Dra. Ana Souza    | ana@sgcm.com       | senha@123  |
+| PATIENT | João Silva        | joao@email.com     | senha@123  |
+| PATIENT | Maria Oliveira    | maria@email.com    | senha@123  |
 
 ## Versões Utilizadas
 

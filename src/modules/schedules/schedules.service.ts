@@ -41,6 +41,10 @@ export class SchedulesService {
   ) {}
 
   async create(dto: CreateScheduleDto, currentUser?: UserPayload): Promise<Schedule> {
+    if (currentUser?.type === UserType.PATIENT) {
+      dto.patientId = currentUser.sub;
+    }
+
     this.ensureCanCreateSchedule(dto, currentUser);
     this.validateFutureDate(dto.scheduledAt);
 
@@ -49,10 +53,10 @@ export class SchedulesService {
 
     await this.checkScheduleConflict(dto.doctorId, dto.scheduledAt);
 
-    return this.persistSchedule(dto);
+    return this.persistSchedule(dto, currentUser?.sub);
   }
 
-  private async persistSchedule(dto: CreateScheduleDto): Promise<Schedule> {
+  private async persistSchedule(dto: CreateScheduleDto, createdBy?: number): Promise<Schedule> {
     if (dto.type === ScheduleType.IN_PERSON) {
       const schedule = this.inPersonRepository.create({
         scheduledAt: new Date(dto.scheduledAt),
@@ -61,6 +65,7 @@ export class SchedulesService {
         room: dto.room,
         unit: dto.unit,
         status: ScheduleStatus.PENDING,
+        createdBy: createdBy ?? null,
       });
 
       return this.inPersonRepository.save(schedule);
@@ -74,6 +79,7 @@ export class SchedulesService {
         accessLink: dto.accessLink,
         platform: dto.platform,
         status: ScheduleStatus.PENDING,
+        createdBy: createdBy ?? null,
       });
 
       return this.onlineRepository.save(schedule);
@@ -86,6 +92,7 @@ export class SchedulesService {
       fullAddress: dto.fullAddress,
       accessNotes: dto.accessNotes,
       status: ScheduleStatus.PENDING,
+      createdBy: createdBy ?? null,
     });
 
     return this.homeRepository.save(schedule);

@@ -329,7 +329,11 @@ export class UsersService {
     return this.userRepository.save(user);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: number, currentUser?: UserPayload): Promise<void> {
+    if (currentUser && currentUser.sub === id) {
+      throw new ForbiddenException('Você não pode inativar sua própria conta.');
+    }
+
     const user = await this.findOne(id);
 
     await this.checkActiveSchedules(id);

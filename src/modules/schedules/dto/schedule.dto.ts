@@ -27,11 +27,12 @@ export class CreateScheduleDto {
   @IsPositive({ message: 'doctorId deve ser um número positivo' })
   doctorId: number;
 
-  @ApiProperty({ description: 'ID do paciente', example: 2 })
+  @ApiPropertyOptional({ description: 'ID do paciente (obrigatório para ADMIN; preenchido automaticamente para PATIENT)', example: 2 })
+  @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'patientId deve ser um número inteiro' })
   @IsPositive({ message: 'patientId deve ser um número positivo' })
-  patientId: number;
+  patientId?: number;
 
   @ApiProperty({
     enum: ScheduleType,
@@ -210,6 +211,14 @@ export class ScheduleResponseDto {
   @Expose()
   @ApiPropertyOptional({ example: null })
   cancellationReason?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ example: 1 })
+  createdBy?: number;
+
+  @Expose()
+  @ApiPropertyOptional({ example: null })
+  cancelledBy?: number;
 
   @Expose()
   @ApiProperty({ example: '2026-01-01T10:00:00.000Z' })

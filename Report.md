@@ -65,7 +65,7 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 8. Exportação do UsersService para o SchedulesModule
    Decisão: O UsersModule exporta o UsersService integralmente. O SchedulesModule o importa e injeta no SchedulesService via construtor.
 
--> Reflexões Arquiteturais e Respostas aos Requisitos
+<!-- -> Reflexões Arquiteturais e Respostas aos Requisitos
 
 1. Granularidade dos Controllers e Documentação
    Decisão: Adotamos uma abordagem híbrida. Temos o `UsersController` para operações administrativas e CRUD genérico, enquanto `DoctorsController` e `PatientsController` oferecem rotas especializadas (ex: `/doctors/:id/specialties`).
@@ -124,7 +124,44 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
 15. Ordem das Verificações (Early Return)
     Decisão: Validamos primeiro a existência das entidades (`404 Not Found`) antes de validar regras de negócio complexas como conflitos de horário (`409 Conflict`).
     Justificativa: Isso economiza processamento e segue o princípio de "falhar rápido" com o erro mais óbvio primeiro.
-   
+
+-> Tabela de Controle de Acesso por Recurso
+
+A tabela abaixo lista todos os endpoints da API e os perfis autorizados, além das restrições de recurso aplicadas no service (ownership).
+
+| Método | Endpoint                              | ADMIN | DOCTOR | PATIENT | Restrição de recurso (service)                          |
+|--------|---------------------------------------|:-----:|:------:|:-------:|---------------------------------------------------------|
+| POST   | /auth/login                           | ✓     | ✓      | ✓       | Público                                                 |
+| POST   | /auth/refresh                         | ✓     | ✓      | ✓       | Público                                                 |
+| POST   | /auth/logout                          | ✓     | ✓      | ✓       | Nenhuma (invalida o próprio token)                      |
+| GET    | /auth/me                              | ✓     | ✓      | ✓       | Retorna apenas o próprio usuário                        |
+| POST   | /users                                | ✓     | —      | —       | —                                                       |
+| GET    | /users                                | ✓     | —      | —       | —                                                       |
+| GET    | /users/:id                            | ✓     | ✓      | ✓       | DOCTOR e PATIENT só acessam o próprio registro          |
+| PUT    | /users/:id                            | ✓     | ✓      | ✓       | DOCTOR e PATIENT só atualizam o próprio registro        |
+| DELETE | /users/:id                            | ✓     | —      | —       | —                                                       |
+| GET    | /doctors                              | ✓     | ✓      | ✓       | —                                                       |
+| GET    | /doctors/:id                          | ✓     | ✓      | ✓       | —                                                       |
+| GET    | /patients                             | ✓     | ✓      | —       | —                                                       |
+| GET    | /patients/:id                         | ✓     | ✓      | ✓       | PATIENT só acessa o próprio registro                    |
+| POST   | /schedules                            | ✓     | —      | ✓       | PATIENT tem patientId preenchido automaticamente pelo token |
+| GET    | /schedules                            | ✓     | ✓      | ✓       | DOCTOR vê apenas os próprios; PATIENT vê apenas os próprios |
+| GET    | /schedules/:id                        | ✓     | ✓      | ✓       | DOCTOR e PATIENT só acessam agendamentos próprios       |
+| PUT    | /schedules/:id                        | ✓     | —      | —       | —                                                       |
+| PATCH  | /schedules/:id/status                 | ✓     | ✓      | ✓       | DOCTOR só altera os próprios; PATIENT só cancela os próprios |
+| DELETE | /schedules/:id                        | ✓     | —      | —       | —                                                       |
+| GET    | /doctors/:id/schedules                | ✓     | ✓      | —       | DOCTOR só acessa os próprios agendamentos               |
+| GET    | /patients/:id/schedules               | ✓     | —      | ✓       | PATIENT só acessa os próprios agendamentos              |
+| POST   | /specialties                          | ✓     | —      | —       | —                                                       |
+| GET    | /specialties                          | ✓     | ✓      | ✓       | —                                                       |
+| GET    | /specialties/:id                      | ✓     | ✓      | ✓       | —                                                       |
+| PUT    | /specialties/:id                      | ✓     | —      | —       | —                                                       |
+| DELETE | /specialties/:id                      | ✓     | —      | —       | —                                                       |
+| GET    | /specialties/:id/doctors              | ✓     | ✓      | ✓       | —                                                       |
+| GET    | /doctors/:id/specialties              | ✓     | ✓      | ✓       | —                                                       |
+| POST   | /doctors/:id/specialties              | ✓     | —      | —       | —                                                       |
+| DELETE | /doctors/:id/specialties/:specialtyId | ✓     | —      | —       | —                                                       |
+
 -> Interceptors e Padronização
 
       Detecção de Respostas de Listagem
@@ -143,9 +180,22 @@ João Pedro Martin Turina: Testes e correções de funcionamento das requisiçõ
    O filtro agora trata explicitamente `UnauthorizedException` e `ForbiddenException`. Isso garante que falhas de segurança forneçam detalhes claros no formato RFC 7807, permitindo que o frontend identifique se o erro é por falta de login (401) ou falta de privilégios administrativos (403).
 
 
+-> Decisões de Segurança — Etapa 2 (Autenticação)
+
+      1. Refresh token armazenado como hash bcrypt — não em texto puro
+   Decisão: O refresh token não é armazenado diretamente no banco de dados. Antes de persistir, aplicamos `bcrypt.hash` com o mesmo custo configurado em `BCRYPT_SALT_ROUNDS`. A comparação posterior usa `bcrypt.compare`.
+   Justificativa: Se o banco fosse comprometido, um refresh token em texto puro permitiria ao atacante impersonar qualquer usuário indefinidamente — pois o refresh token tem validade longa (7 dias por padrão). Armazená-lo como hash garante que o vazamento do banco não resulte em tokens utilizáveis, da mesma forma que aplicamos o mesmo princípio às senhas.
+
+      2. Fallback de JWT_REFRESH_SECRET para JWT_SECRET
+   Decisão: O método `getRefreshSecret()` usa `JWT_REFRESH_SECRET` se definido, e cai para `JWT_SECRET` caso contrário.
+   Justificativa: Esta decisão foi tomada para facilitar o ambiente de desenvolvimento local, onde configurar dois segredos distintos seria desnecessariamente burocrático. Em produção, o `.env.example` documenta explicitamente ambas as variáveis e recomenda valores diferentes. Usar segredos distintos é a prática recomendada porque um access token vazado não comprometeria o refresh token e vice-versa — a separação limita o raio de impacto de um vazamento. O sistema não falha se apenas `JWT_SECRET` estiver definido, mas a ausência de ambos é detectada e lança erro na inicialização.
+
+      3. Parâmetro currentUser opcional nos métodos do service
+   Decisão: Métodos como `create` e `updateStatus` no `SchedulesService` aceitam `currentUser?` como parâmetro opcional.
+   Justificativa: A proteção real é garantida pelo `JwtAuthGuard` global registrado via `APP_GUARD`, que intercepta todas as requisições antes de chegarem ao controller. O parâmetro ser opcional é uma decisão de design para permitir que os mesmos métodos sejam reutilizados internamente (ex: scripts de seed, tarefas agendadas) sem exigir um contexto de usuário autenticado. Em nenhum fluxo HTTP normal é possível chegar nesses métodos sem passar pelo guard, pois apenas rotas marcadas com `@Public()` escapam da autenticação — e nenhuma delas chama esses métodos.
+
 4> Dificuldades e aprendizados
 
 Durante o desenvolvimento do projeto, uma das principais dificuldades foi entender a linguagem, desde a estrutura até as funções que a própria linguagem e biblioteca fornecem. Mesmo tendo assistido às aulas práticas, quando realmente começamos a desenvolver surgiram várias dificuldades, principalmente por ser muita coisa novapara aprender ao mesmo tempo.
 A separação e estrutura do código também foi uma dificuldade, principalmente no começo, quando ainda não tínhamos entendido muito bem como organizar o projeto. Ficamos em dúvida se deixávamos tudo em uma pasta só ou se fazíamos a separação correta por módulos, controllers, services e DTOs. Com conversas entre o grupo, pesquisas e dúvidas tiradas com o professor, conseguimos reorganizar e estruturar melhor o projeto. Entender o funcionamento do Swagger na aplicação também foi uma dificuldade. Apesar de o NestJS já possuir integração com o Swagger, utilizar os decorators corretamente e entender como documentar os endpoints acabou sendo uma dificuldade no início. Com testes e prática, conseguimos compreender melhor como ele funciona.
-A decisão entre inativar ou deletar um usuário também foi bastante discutida entre o grupo, pois tínhamos dúvidas sobre qual seria a melhor abordagem no momento da implementação. Após conversarmos, decidimos optar pela inativação para preservar os registros e manter a integridade das informações do sistema.
-
+A decisão entre inativar ou deletar um usuário também foi bastante discutida entre o grupo, pois tínhamos dúvidas sobre qual seria a melhor abordagem no momento da implementação. Após conversarmos, decidimos optar pela inativação para preservar os registros e manter a integridade das informações do sistema. -->
