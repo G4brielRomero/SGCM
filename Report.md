@@ -3,199 +3,273 @@
 ## Sistema de Gestão de Clínica Médica
 
 **Disciplina:** Desenvolvimento Web 2  
-**Entrega:** Etapa 1  
+**Entrega:** Etapa 2  
 **Integrantes:** Gabriel, Murilo, João  
 **Data:** Maio de 2026
 
 1> Integrantes e contribuições
 
 Participação de todos: Desenvolvimento inicial com estruturação, entidades,
-controllers, service, module, dto, filtros, relatório e testes.
+controllers, service, module, dto, filtros, relatório e testes. Implementações principais, como por exemplo auth, interception, middleware e etc.
 
 Gabriel Romero: Correção de incoerências na atualização dos CPFS, criação do problemDetailDto para as respostas de erro, testes de caso em maneira geral.
 
-Murilo José Silva: Adicionando comentários para melhor entendimento, correção de conflito em agendamento, validações de dto, serialização e testes.
+Murilo José Silva: Adicionando comentários para melhor entendimento, correção de conflito em agendamento, validações de dto, serialização e testes. Fix de token e refresh token que estava sendo possivel usar mesmo depois de solicitar um novo token. Atualização parcial do diagrama.
 
-João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorator
+João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorator.
+
+2> Diagrama de classes
+
+O diagrama de classes da Etapa 1 permanece válido estruturalmente.  
+As alterações desta etapa concentraram-se principalmente na infraestrutura transversal da aplicação e no sistema de autenticação/autorização com JWT, sem mudanças relevantes na hierarquia principal das entidades.
+
+As principais alterações desta etapa foram:
+- inclusão de campos relacionados ao refresh token;
+- auditoria de usuário autenticado em agendamentos;
+- guards globais;
+- middleware de logging;
+- interceptor global;
+- exception filter expandido para autenticação e autorização.
 
 3> Decisões Técnicas
 
+### Estratégia de Guards
+
+Decisão: Optamos por registrar o `JwtAuthGuard` globalmente via `APP_GUARD`.
+
+Alternativas que consideramos: Aplicar `@UseGuards(JwtAuthGuard)` manualmente em cada endpoint protegido.
+
+Por que escolhemos a abordagem global: Aplicar o guard globalmente reduz o risco de esquecer autenticação em endpoints novos. Assim, todos os endpoints ficam protegidos por padrão e apenas rotas explicitamente marcadas com `@Public()` escapam da autenticação.
+
+O que isso muda no sistema: Endpoints como `/auth/login` e `/auth/refresh` utilizam `@Public()`, enquanto o restante da API exige autenticação automaticamente.
+
+---
+
+### Campos do Payload JWT
+
+Decisão: O payload JWT contém apenas:
+- `sub`
+- `email`
+- `type`
+
+Por que escolhemos esses campos: O `sub` identifica o usuário autenticado de forma padronizada. O `email` facilita logs e auditoria. O `type` permite que o `RolesGuard` aplique autorização baseada em perfil sem precisar consultar o banco a cada requisição.
+
+Campos excluídos: Não incluímos informações sensíveis como senha, CPF, CRM, refresh token ou dados pessoais porque o payload JWT pode ser decodificado pelo cliente.
+
+---
+
+### Estratégia de armazenamento do Refresh Token
+
+Decisão: O refresh token não é salvo em texto puro no banco. Antes de persistir, aplicamos `bcrypt.hash`.
+
+Alternativas que consideramos: Armazenar o refresh token diretamente em texto puro.
+
+Por que escolhemos hash bcrypt: Caso o banco seja comprometido, um refresh token em texto puro permitiria que o atacante renovasse sessões indefinidamente. Com hash bcrypt, o token não pode ser reutilizado diretamente mesmo após vazamento do banco.
+
+O que isso muda no sistema: O refresh token é validado utilizando `bcrypt.compare`, seguindo o mesmo princípio de segurança utilizado para senhas.
+
+---
+
+### Tempo de Expiração dos Tokens
+
+Decisão:
+- `accessToken`: 15 minutos
+- `refreshToken`: 7 dias
+
+Por que escolhemos esses valores: O access token possui tempo curto para reduzir a janela de risco caso seja interceptado. Já o refresh token possui duração maior para melhorar a experiência do usuário sem exigir login frequente.
+
+Contexto clínico: Em um sistema médico, sessões muito longas aumentariam o risco de acesso indevido em computadores compartilhados, enquanto sessões muito curtas prejudicariam o fluxo operacional dos usuários.
+
+---
+
+### Controle por Perfil e Controle por Recurso
+
+Decisão: Separamos controle de perfil e controle de recurso em camadas diferentes.
+
+Como funciona:
+- O `RolesGuard` valida se o usuário possui o perfil correto.
+- Os services validam ownership e regras de recurso.
+
+Exemplo:
+- Um `PATIENT` autenticado pode acessar `/patients/:id`, mas o service garante que ele só consiga acessar o próprio recurso.
+- Um `DOCTOR` pode acessar endpoints de agendamento, mas apenas os próprios agendamentos.
+
+Por que escolhemos essa separação: Isso mantém a autorização mais organizada e evita misturar regras de negócio complexas dentro dos controllers.
+
+---
+
+### Política de 401 e 403
+
+Decisão:
+- `401 Unauthorized` é retornado quando o usuário não possui autenticação válida.
+- `403 Forbidden` é retornado quando o usuário está autenticado, mas não possui permissão suficiente.
+
+Por que escolhemos essa diferenciação: Isso permite que o frontend identifique corretamente se o problema é ausência de login ou falta de privilégios.
+
+O Exception Filter foi expandido para padronizar ambos os erros no formato RFC 7807.
+
+---
+
+### Superfícies de Ataque Identificadas
+
+As principais superfícies de ataque identificadas foram:
+
+- endpoint de login sujeito a tentativa de força bruta;
+- reutilização de refresh token;
+- tentativa de acesso a recursos alterando IDs na URL;
+- vazamento de informações sensíveis via serialização incorreta.
+
+Para mitigar esses riscos:
+- utilizamos JWT com expiração curta;
+- implementamos refresh token rotation;
+- armazenamos refresh token com hash bcrypt;
+- utilizamos guards globais;
+- aplicamos controle de ownership nos services;
+- utilizamos serialização com `@Exclude()` e `@Expose()`.
+
+Ao detectar a reutilização de um refresh token antigo, o sistema invalida o refresh token atual do usuário. Essa decisão foi adotada por segurança, pois a reutilização pode indicar vazamento ou tentativa de uso indevido do token. Forçando o usuário a logar novamente, seguindo esse fluxo:
+
+refresh antigo reutilizado → sistema invalida sessão → usuário precisa logar de novo
+
+---
+
 1. Single Table Inheritance (STI) para a hierarquia de Usuários
-   Decisão: Optamos por usar STI com uma tabela única chamada users e uma coluna type para diferenciar os três tipos de usuário: ADMIN, DOCTOR e PATIENT.
-   Alternativas que consideramos: A principal alternativa seria o Class Table Inheritance (CTI), onde cada tipo teria sua própria tabela (admins, doctors, patients) com chave estrangeira apontando para a tabela base users.
-   Por que escolhemos STI: Os três perfis compartilham praticamente os mesmos atributos (name, email, password, isActive, createdAt). Se usássemos CTI, qualquer consulta que misturasse tipos diferentes precisaria de JOINs entre três tabelas, o que tornaria o código bem mais complicado sem necessidade. Fora isso, o SQLite tem suporte limitado à cláusula RETURNING, o que já nos deu dor de cabeça em testes e tornaria o CTI ainda mais problemático com o TypeORM. As poucas colunas específicas de cada tipo (crm pro médico, cpf e birthDate pro paciente) ficam nulas nos demais — o que não chega a ser um problema, dado que são poucos campos.
-   O que isso muda no sistema: Todas as queries de usuário batem em uma única tabela, o que simplifica bastante o código dos services. O TypeORM já cuida da discriminação pelo campo type automaticamente, e as entidades Doctor, Patient e Admin são tratadas como subclasses com @ChildEntity.
+
+Decisão: Optamos por usar STI com uma tabela única chamada users e uma coluna type para diferenciar os três tipos de usuário: ADMIN, DOCTOR e PATIENT.
+
+Alternativas que consideramos: A principal alternativa seria o Class Table Inheritance (CTI), onde cada tipo teria sua própria tabela (admins, doctors, patients) com chave estrangeira apontando para a tabela base users.
+
+Por que escolhemos STI: Os três perfis compartilham praticamente os mesmos atributos (name, email, password, isActive, createdAt). Se usássemos CTI, qualquer consulta que misturasse tipos diferentes precisaria de JOINs entre três tabelas, o que tornaria o código bem mais complicado sem necessidade.
+
+O que isso muda no sistema: Todas as queries de usuário batem em uma única tabela, o que simplifica bastante o código dos services.
+
+---
 
 2. Single Table Inheritance (STI) para a hierarquia de Agendamentos
-   Decisão: Mesma ideia da hierarquia de usuários: STI com a tabela schedules e coluna type para as três modalidades — IN_PERSON, ONLINE e HOME.
-   Alternativas que consideramos: Uma tabela única sem herança formal, usando colunas nullable para todos os campos específicos de cada modalidade, sem criar entidades distintas no código.
-   Por que escolhemos STI: Usar @ChildEntity formalmente deixa o código muito mais claro — quando você instancia um InPersonSchedule, fica explícito que room e unit são campos obrigatórios para aquela modalidade. Além disso, consultas do tipo "todos os agendamentos de um médico, independente do tipo" funcionam direto na entidade base Schedule, sem precisar de UNION. O problema de compatibilidade com o SQLite que mencionamos nos usuários também se aplica aqui.
-   O que isso muda no sistema: Na hora de salvar, o service instancia a entidade certa dependendo da modalidade (InPersonSchedule, OnlineSchedule ou HomeSchedule). Já nas consultas de listagem ou busca por ID, a gente opera direto no repositório base Schedule, que retorna qualquer modalidade de forma transparente.
 
-3. Soft Delete para inativação de Usuários
-   Decisão: Usuários não são deletados de verdade do banco. Quando chamamos DELETE /users/:id, o sistema apenas seta isActive = false no registro.
-   Alternativas que consideramos: Deletar de fato com DELETE no SQL, possivelmente arquivando o registro em outra tabela antes de remover.
-   Por que escolhemos soft delete: Usuários aparecem referenciados em agendamentos históricos. Se a gente deletasse fisicamente, quebraria a integridade referencial e destruiria o histórico clínico — o que é completamente inaceitável num sistema médico. Com soft delete, o histórico continua intacto, os registros inativos simplesmente não aparecem nas listagens (WHERE isActive = true), e reativar uma conta seria trivial. Também adicionamos uma verificação: não é possível inativar um usuário que tenha agendamentos com status PENDING ou CONFIRMED, para não deixar o sistema em estado inconsistente.
-   O que isso muda no sistema: Todas as queries de busca incluem o filtro isActive = true. A operação de remoção checa se existem agendamentos ativos antes de inativar e, se existirem, retorna 409 Conflict com a quantidade de agendamentos pendentes.
+Decisão: Utilizamos STI com a tabela schedules e coluna type para as modalidades IN_PERSON, ONLINE e HOME.
+
+Por que escolhemos STI: Isso permite consultas polimórficas simples e mantém o código mais organizado utilizando `@ChildEntity`.
+
+---
 
 4. Formato de Erros seguindo RFC 7807
-   Decisão: Todos os erros da API retornam um objeto padronizado com os campos type, title, status, detail, instance, method e timestamp.
-   Alternativas que consideramos: Manter o formato padrão do NestJS ({ message, statusCode, error }), que já vem configurado automaticamente sem precisar mexer em nada.
-   Por que escolhemos RFC 7807: O RFC 7807 é um padrão bem estabelecido para APIs HTTP que torna os erros legíveis tanto pra humanos quanto para código. O campo type funciona como um identificador único por categoria de erro, permitindo que o cliente trate erros programaticamente. O detail traz a mensagem específica da ocorrência (por exemplo: "Médico com id 15 não foi encontrado."), enquanto instance mostra exatamente qual URL gerou o problema. Essa uniformidade facilita muito o consumo da API e a depuração.
-   O que isso muda no sistema: Implementamos um HttpExceptionFilter global com @Catch() que intercepta qualquer exceção — tanto as lançadas intencionalmente pelos services (NotFoundException, ConflictException, BadRequestException) quanto erros inesperados, que retornam 500 com mensagem genérica sem expor detalhes internos.
+
+Decisão: Todos os erros retornam um objeto padronizado com:
+- type
+- title
+- status
+- detail
+- instance
+- method
+- timestamp
+
+Por que escolhemos RFC 7807: O padrão facilita integração, depuração e tratamento programático dos erros no frontend.
+
+---
 
 5. Validação declarativa com ValidationPipe e class-validator
-   Decisão: Configurar o ValidationPipe globalmente com whitelist: true, forbidNonWhitelisted: true e transform: true. As regras de validação ficam declaradas nos DTOs via decorators do class-validator.
-   Alternativas que consideramos: Fazer a validação de forma imperativa nos services, verificando campo a campo manualmente antes de salvar.
-   Por que escolhemos a abordagem declarativa: Validação via decorators mantém as regras junto aos dados (no DTO), o que torna o código mais fácil de ler e manter. O whitelist: true remove campos não declarados antes de chegar ao service, e o forbidNonWhitelisted: true rejeita requisições com campos desconhecidos com 400 Bad Request, o que protege contra envio de dados inesperados. Campos condicionalmente obrigatórios — como crm, que só faz sentido para médicos — foram tratados com @ValidateIf, evitando lógica condicional espalhada pelo service.
-   O que isso muda no sistema: Os services já recebem os dados validados e com os tipos corretos (transform: true converte, por exemplo, strings de query param para number automaticamente). As mensagens de erro de validação são coletadas em array e concatenadas no campo detail da resposta RFC 7807.
 
-6. Serialização de respostas com ClassSerializerInterceptor
-   Decisão: Configurar o ClassSerializerInterceptor globalmente, com DTOs de resposta que usam @Exclude() na classe e @Expose() apenas nos campos que devem aparecer. Os controllers usam plainToInstance para converter a entidade no DTO correto antes de retornar.
-   Alternativas que consideramos: Deletar manualmente os campos sensíveis das entidades antes de retornar, ou simplesmente retornar as entidades do TypeORM direto.
-   Por que escolhemos o ClassSerializerInterceptor: Retornar entidades diretamente exporia campos como password e outros campos internos do TypeORM. Deletar manualmente seria frágil — qualquer novo campo adicionado à entidade precisaria ser explicitamente removido em todos os pontos de retorno. Com @Exclude() no DTO e @Expose() só nos campos desejados, o contrato de resposta é declarativo e não tem como vazar campo acidentalmente.
-   O que isso muda no sistema: Cada recurso tem seu próprio DTO de resposta (UserResponseDto, DoctorResponseDto, PatientResponseDto, etc.). O campo password nunca aparece em nenhuma resposta da API, independente do caminho percorrido no código.
+Decisão: Configuramos:
+- `whitelist: true`
+- `forbidNonWhitelisted: true`
+- `transform: true`
 
-7. Prevenção de double-booking com índice parcial único
-   Decisão: Além da verificação explícita no service, criamos um índice parcial único no banco em (doctorId, scheduledAt) com a cláusula WHERE status = 'CONFIRMED'.
-   Alternativas que consideramos: Só fazer a verificação via query antes de salvar, sem nenhuma constraint no banco.
-   Por que adicionamos o índice parcial: A verificação no service resolve o caso normal, mas não protege contra condições de corrida — duas requisições simultâneas podem passar pela verificação antes de qualquer uma terminar o INSERT. O índice parcial adiciona uma segunda camada de proteção a nível de banco, garantindo que mesmo em condição de corrida o banco rejeite a segunda inserção com erro de constraint. O índice é parcial (só para CONFIRMED) justamente para não bloquear múltiplos agendamentos PENDING no mesmo horário, o que faz sentido no fluxo do sistema.
-   O que isso muda no sistema: O filtro de exceções captura o SQLITE_CONSTRAINT_UNIQUE e retorna 409 Conflict com mensagem amigável. A regra de negócio fica garantida em dois pontos independentes, tornando o sistema mais robusto a cenários de concorrência.
+Por que escolhemos isso: Os DTOs centralizam as regras de validação e impedem que campos inesperados cheguem aos services.
 
-8. Exportação do UsersService para o SchedulesModule
-   Decisão: O UsersModule exporta o UsersService integralmente. O SchedulesModule o importa e injeta no SchedulesService via construtor.
+---
 
-<!-- -> Reflexões Arquiteturais e Respostas aos Requisitos
+6. Serialização com ClassSerializerInterceptor
 
-1. Granularidade dos Controllers e Documentação
-   Decisão: Adotamos uma abordagem híbrida. Temos o `UsersController` para operações administrativas e CRUD genérico, enquanto `DoctorsController` e `PatientsController` oferecem rotas especializadas (ex: `/doctors/:id/specialties`).
-   Justificativa: Isso permite que a documentação do Swagger seja segmentada por perfil, facilitando o consumo da API. O `UsersController` lida com a criação polimórfica (recebendo o `type`), enquanto os controllers específicos retornam visões enriquecidas (como médicos com suas especialidades já carregadas), agregando valor real sobre uma consulta genérica de usuários.
+Decisão: Utilizamos DTOs de resposta com:
+- `@Exclude()`
+- `@Expose()`
 
-2. Dependências entre Módulos e Reutilização
-   Decisão: O `UsersModule` exporta o `UsersService` integralmente para o `SchedulesModule`.
-   Justificativa: Embora exportar o service inteiro exponha métodos de criação/remoção, optamos pela simplicidade nesta etapa. Para garantir o encapsulamento, o `SchedulesService` utiliza apenas métodos de busca (`findDoctorOrFail`, `findPatientOrFail`). Esta interface já foi projetada para ser reutilizada pelo `AppointmentsModule` na Etapa 3.
+Por que escolhemos isso: Isso evita vazamento de:
+- password
+- refreshToken
+- refreshTokenJti
+- campos internos
 
-3. DTOs Únicos com Validação Condicional
-   Decisão: Utilizamos um único `CreateScheduleDto` e `CreateUserDto` fazendo uso massivo de `@ValidateIf` do `class-validator`.
-   Justificativa: Optamos por essa estratégia para manter os endpoints de criação centralizados e simplificar o roteamento no NestJS. No `CreateScheduleDto`, campos como `accessLink` só são validados se o `type` for `ONLINE`. No Swagger, usamos `@ApiPropertyOptional` para indicar que esses campos dependem da modalidade escolhida, mantendo o contrato claro sem precisar de múltiplos endpoints de POST.
+---
 
-4. Validação de CPF e Invariantes
-   Decisão: Implementamos um decorator customizado `@IsCpf` que valida o algoritmo completo do dígito verificador.
-   Justificativa: Apenas validar o formato (regex) seria insuficiente para um sistema médico onde a unicidade e veracidade do documento são críticas. As invariantes de negócio são verificadas em duas camadas: no DTO (formato e presença) e no Service (regras de domínio, como impedir agendamentos no passado ou duplicados), garantindo que o sistema seja "seguro por padrão".
+7. Logs em Casos de Exceção
 
-5. Erros de Validação e RFC 7807
-   Decisão: No `HttpExceptionFilter`, interceptamos o array de erros do `ValidationPipe`.
-   Justificativa: O padrão RFC 7807 exige um campo `detail` em string. Nossa estratégia concatena as mensagens de erro (ex: "CRM é obrigatório; E-mail inválido") em uma única string separada por ponto e vírgula. Isso mantém a compatibilidade com o padrão sem perder a informação de múltiplos erros de entrada.
+Validamos que o `LoggingMiddleware` continua registrando corretamente mesmo quando ocorre exceção, pois o middleware monitora o evento `finish` da resposta.
 
-6. Unicidade: Service vs Banco de Dados
-   Decisão: Verificação dupla. O Service faz um `findOne` antes de salvar para retornar um erro 409 amigável, e o Banco possui índices únicos (parciais para agendamentos) como última linha de defesa.
-   Justificativa: O Service provê a melhor experiência para o desenvolvedor frontend com mensagens claras. O índice no banco (STI com `WHERE status = 'CONFIRMED'`) previne *race conditions* que a checagem em memória/service não conseguiria barrar em ambientes de alta concorrência.
+---
 
-7. Atualização Parcial e Regras de Negócio
-   Decisão: O `UpdateUserDto` e `UpdateScheduleDto` são parciais, mas bloqueiam a alteração do campo `type`.
-   Justificativa: No domínio clínico, um Paciente não "evolui" para Médico no mesmo registro; são identidades distintas. A senha pode ser atualizada via `PUT`, mas a lógica de hash (bcrypt com custo 12) é garantida no Service. O custo 12 foi escolhido por ser o padrão de mercado que equilibra segurança contra força bruta e tempo de resposta do servidor.
+8. Refresh Token Rotation
 
-8. Entidade de Junção e Evolução (Doctor x Specialty)
-   Decisão: Nesta etapa, utilizamos a facilidade do TypeORM para gerenciar a tabela de junção.
-   Justificativa: Embora o diagrama preveja uma entidade explícita, a implementação atual atende aos requisitos de associar/desassociar. Para a Etapa 3, se houver necessidade de adicionar atributos à relação (como "data de obtenção do título"), evoluiremos para uma entidade de junção explícita.
+Decisão: Cada refresh token pode ser utilizado apenas uma vez.
 
-9. Ordenação Padrão
-   Decisão: Agendamentos são ordenados por `scheduledAt: ASC` (mais próximos primeiro). Usuários são ordenados por `name: ASC`.
-   Justificativa: Estabelecemos essa consistência no `PaginationQueryDto` e nos serviços para que as listagens sejam previsíveis para o usuário final, mesmo quando o parâmetro `sort` for omitido.
+Por que escolhemos isso: Caso um refresh token seja interceptado e reutilizado, o sistema invalida a sessão anterior e impede replay attack.
 
-10. Limitações do Modelo: Múltiplos Perfis
-    Reflexão: O modelo atual via STI com coluna `type` limita um usuário a ter apenas um papel. Se um Médico fosse também Administrador, precisaríamos migrar de STI para uma abordagem de "Roles" (Many-to-Many) ou permitir múltiplos registros com o mesmo e-mail (o que quebraria a unicidade atual). Reconhecemos essa limitação como uma simplificação de escopo para a Etapa 1.
+---
 
-11. Gestão de Schema: Synchronize vs Migrations
-    Decisão: Para esta etapa de desenvolvimento, utilizamos `synchronize: true` no SQLite.
-    Justificativa: Como a equipe é pequena e o schema está mudando rapidamente na Etapa 1, o `synchronize` acelera o desenvolvimento. Para a Etapa 2 (Autenticação) e Etapa 3 (Produção), migraremos para arquivos de Migration para garantir rastreabilidade e evitar perda de dados.
+9. Controle de Conflito em Agendamentos
 
-12. Cancelamento e Auditoria Prematura
-    Decisão: O campo `cancelledBy` foi incluído nas entidades, mas permanece nulo nesta etapa.
-    Justificativa: Sem o contexto de `@CurrentUser()`, não seria seguro preencher este campo. Na Etapa 2, o `SchedulesService` será atualizado para injetar o ID do usuário logado durante a operação de cancelamento, permitindo auditoria completa de quem desmarcou a consulta.
+Decisão: Implementamos proteção dupla:
+- validação no service;
+- índice único parcial no banco.
 
-13. Política de Comentários e Clean Code
-    Decisão: Priorizamos nomes de métodos expressivos (ex: `findDoctorOrFail`).
-    Justificativa: Comentários foram reservados apenas para explicar "o porquê" de decisões de negócio não óbvias (como a lógica do índice parcial único). A documentação técnica principal reside nos decorators do Swagger, que servem tanto para o código quanto para a interface de testes da API.
+Por que escolhemos isso: Isso evita double booking inclusive em cenários concorrentes.
 
-14. Atomicidade das Operações
-    Reflexão: No SQLite, operações simples de uma única tabela são atômicas por padrão. Contudo, na Etapa 3, ao converter um `Schedule` para `Appointment`, usaremos `DataSource.transaction()` para garantir que o agendamento mude para `COMPLETED` apenas se o atendimento for gravado com sucesso, evitando estados inconsistentes no sistema.
+---
 
-15. Ordem das Verificações (Early Return)
-    Decisão: Validamos primeiro a existência das entidades (`404 Not Found`) antes de validar regras de negócio complexas como conflitos de horário (`409 Conflict`).
-    Justificativa: Isso economiza processamento e segue o princípio de "falhar rápido" com o erro mais óbvio primeiro.
+10. Política de Comentários e Clean Code
+
+Decisão: Priorizamos nomes de métodos expressivos e comentários apenas para explicar decisões de negócio não óbvias.
+
+---
+
+11. Ordem das Verificações (Early Return)
+
+Decisão: Validamos primeiro existência de entidade (`404`) antes de regras complexas (`409`).
+
+Por que escolhemos isso: Segue o princípio de falhar rápido e economiza processamento.
+
+---
 
 -> Tabela de Controle de Acesso por Recurso
 
-A tabela abaixo lista todos os endpoints da API e os perfis autorizados, além das restrições de recurso aplicadas no service (ownership).
-
-| Método | Endpoint                              | ADMIN | DOCTOR | PATIENT | Restrição de recurso (service)                          |
-|--------|---------------------------------------|:-----:|:------:|:-------:|---------------------------------------------------------|
-| POST   | /auth/login                           | ✓     | ✓      | ✓       | Público                                                 |
-| POST   | /auth/refresh                         | ✓     | ✓      | ✓       | Público                                                 |
-| POST   | /auth/logout                          | ✓     | ✓      | ✓       | Nenhuma (invalida o próprio token)                      |
-| GET    | /auth/me                              | ✓     | ✓      | ✓       | Retorna apenas o próprio usuário                        |
-| POST   | /users                                | ✓     | —      | —       | —                                                       |
-| GET    | /users                                | ✓     | —      | —       | —                                                       |
-| GET    | /users/:id                            | ✓     | ✓      | ✓       | DOCTOR e PATIENT só acessam o próprio registro          |
-| PUT    | /users/:id                            | ✓     | ✓      | ✓       | DOCTOR e PATIENT só atualizam o próprio registro        |
-| DELETE | /users/:id                            | ✓     | —      | —       | —                                                       |
-| GET    | /doctors                              | ✓     | ✓      | ✓       | —                                                       |
-| GET    | /doctors/:id                          | ✓     | ✓      | ✓       | —                                                       |
-| GET    | /patients                             | ✓     | ✓      | —       | —                                                       |
-| GET    | /patients/:id                         | ✓     | ✓      | ✓       | PATIENT só acessa o próprio registro                    |
-| POST   | /schedules                            | ✓     | —      | ✓       | PATIENT tem patientId preenchido automaticamente pelo token |
-| GET    | /schedules                            | ✓     | ✓      | ✓       | DOCTOR vê apenas os próprios; PATIENT vê apenas os próprios |
-| GET    | /schedules/:id                        | ✓     | ✓      | ✓       | DOCTOR e PATIENT só acessam agendamentos próprios       |
-| PUT    | /schedules/:id                        | ✓     | —      | —       | —                                                       |
-| PATCH  | /schedules/:id/status                 | ✓     | ✓      | ✓       | DOCTOR só altera os próprios; PATIENT só cancela os próprios |
-| DELETE | /schedules/:id                        | ✓     | —      | —       | —                                                       |
-| GET    | /doctors/:id/schedules                | ✓     | ✓      | —       | DOCTOR só acessa os próprios agendamentos               |
-| GET    | /patients/:id/schedules               | ✓     | —      | ✓       | PATIENT só acessa os próprios agendamentos              |
-| POST   | /specialties                          | ✓     | —      | —       | —                                                       |
-| GET    | /specialties                          | ✓     | ✓      | ✓       | —                                                       |
-| GET    | /specialties/:id                      | ✓     | ✓      | ✓       | —                                                       |
-| PUT    | /specialties/:id                      | ✓     | —      | —       | —                                                       |
-| DELETE | /specialties/:id                      | ✓     | —      | —       | —                                                       |
-| GET    | /specialties/:id/doctors              | ✓     | ✓      | ✓       | —                                                       |
-| GET    | /doctors/:id/specialties              | ✓     | ✓      | ✓       | —                                                       |
-| POST   | /doctors/:id/specialties              | ✓     | —      | —       | —                                                       |
-| DELETE | /doctors/:id/specialties/:specialtyId | ✓     | —      | —       | —                                                       |
-
--> Interceptors e Padronização
-
-      Detecção de Respostas de Listagem
-   Implementamos a detecção verificando se o objeto retornado possui as propriedades `data` e `meta`. Escolhemos essa abordagem por ser a mais eficiente e escalável; ela não exige que o desenvolvedor adicione decorators manuais em cada método de listagem e garante que qualquer novo endpoint paginado adicionado na Etapa 3 seja automaticamente formatado pelo interceptor.
-
-      Ordem de Execução dos Interceptors
-   Configuramos o `ClassSerializerInterceptor` antes do `TransformInterceptor` no `main.ts`. Como no NestJS a execução no fluxo de resposta segue o padrão de pilha (LIFO), o TransformInterceptor envelopa o objeto primeiro e o Serializer atua por último. Nossos testes confirmaram que o Serializer percorre o envelope de forma recursiva, removendo campos marcados com `@Exclude()` (como o password) mesmo eles estando agora dentro da chave `data`.
-
-      Tratamento de Respostas sem Corpo
-   O interceptor verifica se o status da resposta é `204` ou se o conteúdo retornado é `null`/`undefined`. Nestes casos, ele retorna o dado original sem modificação. Isso é fundamental para respeitar a semântica do protocolo HTTP, garantindo que operações que não devem possuir corpo (como inativações bem-sucedidas) permaneçam vazias.
-
-      Logs em Casos de Exceção
-   Validamos que o `LoggingMiddleware` continua registrando o tempo de processamento corretamente mesmo quando ocorre uma exceção. Isso acontece porque o middleware monitora o evento `finish` da resposta do Express, que é disparado pelo `HttpExceptionFilter` ao enviar o erro padronizado ao cliente.
-
-      Expansão do Exception Filter
-   O filtro agora trata explicitamente `UnauthorizedException` e `ForbiddenException`. Isso garante que falhas de segurança forneçam detalhes claros no formato RFC 7807, permitindo que o frontend identifique se o erro é por falta de login (401) ou falta de privilégios administrativos (403).
-
-
--> Decisões de Segurança — Etapa 2 (Autenticação)
-
-      1. Refresh token armazenado como hash bcrypt — não em texto puro
-   Decisão: O refresh token não é armazenado diretamente no banco de dados. Antes de persistir, aplicamos `bcrypt.hash` com o mesmo custo configurado em `BCRYPT_SALT_ROUNDS`. A comparação posterior usa `bcrypt.compare`.
-   Justificativa: Se o banco fosse comprometido, um refresh token em texto puro permitiria ao atacante impersonar qualquer usuário indefinidamente — pois o refresh token tem validade longa (7 dias por padrão). Armazená-lo como hash garante que o vazamento do banco não resulte em tokens utilizáveis, da mesma forma que aplicamos o mesmo princípio às senhas.
-
-      2. Fallback de JWT_REFRESH_SECRET para JWT_SECRET
-   Decisão: O método `getRefreshSecret()` usa `JWT_REFRESH_SECRET` se definido, e cai para `JWT_SECRET` caso contrário.
-   Justificativa: Esta decisão foi tomada para facilitar o ambiente de desenvolvimento local, onde configurar dois segredos distintos seria desnecessariamente burocrático. Em produção, o `.env.example` documenta explicitamente ambas as variáveis e recomenda valores diferentes. Usar segredos distintos é a prática recomendada porque um access token vazado não comprometeria o refresh token e vice-versa — a separação limita o raio de impacto de um vazamento. O sistema não falha se apenas `JWT_SECRET` estiver definido, mas a ausência de ambos é detectada e lança erro na inicialização.
-
-      3. Parâmetro currentUser opcional nos métodos do service
-   Decisão: Métodos como `create` e `updateStatus` no `SchedulesService` aceitam `currentUser?` como parâmetro opcional.
-   Justificativa: A proteção real é garantida pelo `JwtAuthGuard` global registrado via `APP_GUARD`, que intercepta todas as requisições antes de chegarem ao controller. O parâmetro ser opcional é uma decisão de design para permitir que os mesmos métodos sejam reutilizados internamente (ex: scripts de seed, tarefas agendadas) sem exigir um contexto de usuário autenticado. Em nenhum fluxo HTTP normal é possível chegar nesses métodos sem passar pelo guard, pois apenas rotas marcadas com `@Public()` escapam da autenticação — e nenhuma delas chama esses métodos.
+| Método | Endpoint | ADMIN | DOCTOR | PATIENT | Restrição |
+|--------|-----------|:-----:|:------:|:-------:|-----------|
+| POST | /auth/login | ✓ | ✓ | ✓ | Público |
+| POST | /auth/refresh | ✓ | ✓ | ✓ | Público |
+| POST | /auth/logout | ✓ | ✓ | ✓ | Invalida apenas o próprio token |
+| GET | /auth/me | ✓ | ✓ | ✓ | Retorna apenas o usuário autenticado |
+| POST | /users | ✓ | ✗ | ✗ | Administrativo |
+| GET | /users | ✓ | ✗ | ✗ | Administrativo |
+| GET | /users/:id | ✓ | ✓ | ✓ | Próprio recurso |
+| PUT | /users/:id | ✓ | ✓ | ✓ | Próprio recurso |
+| DELETE | /users/:id | ✓ | ✗ | ✗ | Administrativo |
+| GET | /doctors | ✓ | ✓ | ✓ | Nenhuma |
+| GET | /doctors/:id | ✓ | ✓ | ✓ | Nenhuma |
+| GET | /patients | ✓ | ✓ | ✗ | Nenhuma |
+| GET | /patients/:id | ✓ | ✓ | ✓ | Próprio recurso |
+| POST | /schedules | ✓ | ✗ | ✓ | Patient cria apenas para si |
+| GET | /schedules | ✓ | ✓ | ✓ | Ownership validado no service |
+| GET | /schedules/:id | ✓ | ✓ | ✓ | Ownership validado no service |
+| PATCH | /schedules/:id/status | ✓ | ✓ | ✓ | Ownership validado no service |
+| DELETE | /schedules/:id | ✓ | ✗ | ✗ | Administrativo |
 
 4> Dificuldades e aprendizados
 
-Durante o desenvolvimento do projeto, uma das principais dificuldades foi entender a linguagem, desde a estrutura até as funções que a própria linguagem e biblioteca fornecem. Mesmo tendo assistido às aulas práticas, quando realmente começamos a desenvolver surgiram várias dificuldades, principalmente por ser muita coisa novapara aprender ao mesmo tempo.
-A separação e estrutura do código também foi uma dificuldade, principalmente no começo, quando ainda não tínhamos entendido muito bem como organizar o projeto. Ficamos em dúvida se deixávamos tudo em uma pasta só ou se fazíamos a separação correta por módulos, controllers, services e DTOs. Com conversas entre o grupo, pesquisas e dúvidas tiradas com o professor, conseguimos reorganizar e estruturar melhor o projeto. Entender o funcionamento do Swagger na aplicação também foi uma dificuldade. Apesar de o NestJS já possuir integração com o Swagger, utilizar os decorators corretamente e entender como documentar os endpoints acabou sendo uma dificuldade no início. Com testes e prática, conseguimos compreender melhor como ele funciona.
-A decisão entre inativar ou deletar um usuário também foi bastante discutida entre o grupo, pois tínhamos dúvidas sobre qual seria a melhor abordagem no momento da implementação. Após conversarmos, decidimos optar pela inativação para preservar os registros e manter a integridade das informações do sistema. -->
+Durante o desenvolvimento do projeto, uma das principais dificuldades foi entender a linguagem, desde a estrutura até as funções que a própria linguagem e biblioteca fornecem.
+
+Mesmo tendo assistido às aulas práticas, quando realmente começamos a desenvolver surgiram várias dificuldades, principalmente por ser muita coisa nova para aprender ao mesmo tempo.
+
+A separação e estrutura do código também foi uma dificuldade, principalmente no começo, quando ainda não tínhamos entendido muito bem como organizar o projeto.
+
+Com conversas entre o grupo, pesquisas e dúvidas tiradas com o professor, conseguimos reorganizar e estruturar melhor o projeto.
+
+Entender o funcionamento do Swagger também foi uma dificuldade no início, principalmente na utilização correta dos decorators e documentação dos endpoints.
+
+A decisão entre inativar ou deletar um usuário também foi bastante discutida entre o grupo. Após analisarmos o impacto nos registros e integridade do sistema, optamos pela inativação lógica utilizando `isActive = false`.
+
+Encontramos algumas dificuldades para entender e implementar o fluxo de autenticação.
+
+Tivemos alguns problemas no refresh token, onde era possivel usar um antigo.
+
+E também o funcionamento do app_guard e estrategia global de autenticação.
