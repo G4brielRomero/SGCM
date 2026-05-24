@@ -16,7 +16,7 @@ Gabriel Romero: Correção de incoerências na atualização dos CPFS, criação
 
 Murilo José Silva: Adicionando comentários para melhor entendimento, correção de conflito em agendamento, validações de dto, serialização e testes. Fix de token e refresh token que estava sendo possivel usar mesmo depois de solicitar um novo token. Atualização parcial do diagrama.
 
-João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorator.
+João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorator. Implementação de Transform Intercpetor e Exception Filter
 
 2> Diagrama de classes
 
