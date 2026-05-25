@@ -1,181 +1,245 @@
 # SGCM — Sistema de Gestão de Clínica Médica
 
-API REST construída com NestJS + TypeORM + SQLite para gestão de usuários, especialidades e agendamentos.
+API REST construída com NestJS + TypeORM + SQLite para gestão de usuários, especialidades médicas e agendamentos, com autenticação JWT, autorização por perfil e padronização de respostas.
 
 ## Requisitos
 
-- Node.js 20.11.0 (use `nvm use` na raiz do projeto)
+- Node.js 20.11.0
 - npm 10+
+- SQLite
 
 ## Configuração Inicial
 
 ```bash
-# 1. Instalar dependências
 npm install
-
-# 2. Copiar variáveis de ambiente
-# Linux / macOS
-cp .env.example .env
-# Windows (PowerShell)
-Copy-Item .env.example .env
-# Windows (CMD)
 copy .env.example .env
-
-# 3. Iniciar em modo desenvolvimento
 npm run start:dev
 ```
 
-> **Obs.:** o arquivo `.env` é opcional — todos os valores possuem padrão no código (`PORT=3000`, `DATABASE_PATH=./database.db`, `BCRYPT_SALT_ROUNDS=12`).
+A API estará disponível em:
 
-A API estará disponível em: http://localhost:3000  
-Documentação Swagger: http://localhost:3000/api
-
-## Versões Utilizadas
-
-- NestJS: 11.x
-- TypeORM: 0.3.x
-- Node.js: 20.11.0
-- Banco de dados: SQLite (better-sqlite3)
-
-## Estrutura do Projeto
-
-```
-src/
-├── main.ts                    # Bootstrap da aplicação
-├── app.module.ts              # Módulo raiz
-├── common/
-│   ├── filters/
-│   │   └── http-exception.filter.ts   # Filtro global RFC 7807
-│   └── dto/
-│       └── pagination-query.dto.ts    # DTO e helpers de paginação
-└── modules/
-    ├── users/                 # Usuários (Admin, Doctor, Patient)
-    │   ├── entities/
-    │   ├── dto/
-    │   ├── users.controller.ts
-    │   ├── users.service.ts
-    │   └── users.module.ts
-    ├── specialties/           # Especialidades médicas
-    │   ├── entities/
-    │   ├── dto/
-    │   ├── specialties.controller.ts
-    │   ├── specialties.service.ts
-    │   └── specialties.module.ts
-    └── schedules/             # Agendamentos (IN_PERSON, ONLINE, HOME)
-        ├── entities/
-        ├── dto/
-        ├── schedules.controller.ts
-        ├── schedules.service.ts
-        └── schedules.module.ts
+```text
+http://localhost:3000
 ```
 
-## Endpoints Principais
+Documentação Swagger:
 
-### Usuários
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| POST | /users | Criar usuário (ADMIN/DOCTOR/PATIENT) |
-| GET | /users | Listar com filtro por type |
-| GET | /users/:id | Buscar por ID |
-| PUT | /users/:id | Atualizar |
-| DELETE | /users/:id | Inativar (soft delete) |
+```text
+http://localhost:3000/api
+```
 
-### Médicos
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| GET | /doctors | Listar com especialidades |
-| GET | /doctors/:id | Buscar por ID |
-| GET | /doctors/:id/specialties | Especialidades do médico |
-| POST | /doctors/:id/specialties | Associar especialidade |
-| DELETE | /doctors/:id/specialties/:sid | Desassociar especialidade |
-| GET | /doctors/:id/schedules | Agendamentos do médico |
+## Variáveis de Ambiente
 
-### Pacientes
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| GET | /patients | Listar pacientes |
-| GET | /patients/:id | Buscar por ID |
-| GET | /patients/:id/schedules | Agendamentos do paciente |
+Exemplo de `.env`:
 
-### Especialidades
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| POST | /specialties | Criar |
-| GET | /specialties | Listar |
-| GET | /specialties/:id | Buscar por ID |
-| PUT | /specialties/:id | Atualizar |
-| DELETE | /specialties/:id | Excluir |
-| GET | /specialties/:id/doctors | Médicos da especialidade |
+```env
+PORT=3000
+DATABASE_PATH=./database.db
 
-### Agendamentos
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| POST | /schedules | Criar agendamento |
-| GET | /schedules | Listar com filtros |
-| GET | /schedules/:id | Buscar por ID |
-| PUT | /schedules/:id | Atualizar |
-| PATCH | /schedules/:id/status | Atualizar status (CONFIRMED/CANCELLED) |
-| DELETE | /schedules/:id | Excluir |
+JWT_SECRET=sgcm_access_secret_dev
+JWT_REFRESH_SECRET=sgcm_refresh_secret_dev
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
 
-## Decisões Arquiteturais
+BCRYPT_SALT_ROUNDS=12
+```
 
-### Estratégia de Herança: Single Table Inheritance (STI)
-- **User**: STI com coluna `type` discriminando ADMIN/DOCTOR/PATIENT em uma única tabela `users`
-- **Schedule**: STI com coluna `type` discriminando IN_PERSON/ONLINE/HOME em uma única tabela `schedules`
-- **Justificativa**: STI é adequado quando as subclasses compartilham muitos atributos e as consultas frequentemente precisam retornar registros mistos (ex: todos os agendamentos de um médico, independente da modalidade). O SQLite não tem suporte completo a `RETURNING`, tornando STI mais compatível que CTI.
+`JWT_SECRET` é obrigatório. Em produção, recomenda-se usar valores diferentes para `JWT_SECRET` e `JWT_REFRESH_SECRET`.
 
-### Soft Delete de Usuários
-- Usuários são inativados (`isActive = false`) em vez de removidos fisicamente
-- Preserva histórico de agendamentos e referências
-- Listagens filtram automaticamente registros inativos
+## Scripts
 
-### Exportação do UsersService
-- `UsersModule` exporta `UsersService` integralmente para uso em `SchedulesModule` e futuro `AppointmentsModule`
-- Métodos `findDoctorOrFail` e `findPatientOrFail` fornecem interface clara para outros módulos
+```bash
+npm run start:dev
+npm run build
+npm run start
+npm run seed
+```
 
-### Verificação de Unicidade
-- Feita no service antes de persistir (verificação explícita)
-- Produz mensagens de erro descritivas
-- Fallback no filtro global para erros de constraint do SQLite
+## Dados de Teste
 
-### Status de Agendamento
-- PENDING → CONFIRMED ou CANCELLED
-- CONFIRMED → CANCELLED (via API) ou COMPLETED (apenas via AppointmentsService na Etapa 3)
-- COMPLETED → nenhuma transição permitida
-- O valor COMPLETED é rejeitado no endpoint PATCH /schedules/:id/status
+Para popular o banco:
 
-### Campos cancelledBy e createdBy
-- Existem no modelo mas são nulos na Etapa 1
-- Serão preenchidos com `@CurrentUser()` na Etapa 2 após implementação do JWT
+```bash
+npm run seed
+```
 
-## Formato de Erros (RFC 7807)
+Usuários criados:
+
+| Perfil | E-mail | Senha |
+|---|---|---|
+| ADMIN | admin@sgcm.com | senha@123 |
+| DOCTOR | rafael@sgcm.com | senha@123 |
+| DOCTOR | ana@sgcm.com | senha@123 |
+| PATIENT | joao@email.com | senha@123 |
+| PATIENT | maria@email.com | senha@123 |
+
+## Autenticação
+
+O sistema utiliza JWT com dois tokens:
+
+- `accessToken`: usado para acessar endpoints protegidos.
+- `refreshToken`: usado para renovar a sessão.
+
+### Login
+
+```http
+POST /auth/login
+```
+
+Body:
 
 ```json
 {
-  "type": "https://sgcm.example.com/problems/not-found",
-  "title": "Recurso não encontrado",
-  "detail": "Médico com id 15 não foi encontrado.",
-  "instance": "/doctors/15",
-  "method": "GET",
-  "status": 404,
-  "timestamp": "2026-04-13T20:29:41.234Z"
+  "email": "admin@sgcm.com",
+  "password": "senha@123"
 }
 ```
 
-## Paginação
+### Usando o token no Swagger
 
-Todos os endpoints de listagem retornam:
+1. Acesse `http://localhost:3000/api`
+2. Faça login em `/auth/login`
+3. Copie o `accessToken`
+4. Clique em **Authorize**
+5. Informe:
+
+```text
+Bearer seu_access_token
+```
+
+## Segurança
+
+O projeto utiliza:
+
+- `JwtAuthGuard` global
+- `RolesGuard` global
+- `@Public()` para rotas públicas
+- `@Roles()` para controle por perfil
+- `@CurrentUser()` para acessar o usuário autenticado
+- refresh token salvo com hash bcrypt
+- refresh token rotation com `jti`
+
+Perfis disponíveis:
+
+- ADMIN
+- DOCTOR
+- PATIENT
+
+## Controle de Acesso
+
+### Usuários
+
+| Método | Rota | Acesso |
+|---|---|---|
+| POST | `/users` | ADMIN |
+| GET | `/users` | ADMIN |
+| GET | `/users/:id` | ADMIN ou próprio usuário |
+| PUT | `/users/:id` | ADMIN ou próprio usuário |
+| DELETE | `/users/:id` | ADMIN |
+
+### Médicos
+
+| Método | Rota | Acesso |
+|---|---|---|
+| GET | `/doctors` | ADMIN, DOCTOR, PATIENT |
+| GET | `/doctors/:id` | ADMIN, DOCTOR, PATIENT |
+| GET | `/doctors/:id/specialties` | ADMIN, DOCTOR, PATIENT |
+| GET | `/doctors/:id/schedules` | ADMIN ou próprio DOCTOR |
+
+### Pacientes
+
+| Método | Rota | Acesso |
+|---|---|---|
+| GET | `/patients` | ADMIN, DOCTOR |
+| GET | `/patients/:id` | ADMIN, DOCTOR ou próprio PATIENT |
+| GET | `/patients/:id/schedules` | ADMIN ou próprio PATIENT |
+
+### Especialidades
+
+| Método | Rota | Acesso |
+|---|---|---|
+| POST | `/specialties` | ADMIN |
+| GET | `/specialties` | ADMIN, DOCTOR, PATIENT |
+| GET | `/specialties/:id` | ADMIN, DOCTOR, PATIENT |
+| PUT | `/specialties/:id` | ADMIN |
+| DELETE | `/specialties/:id` | ADMIN |
+| GET | `/specialties/:id/doctors` | ADMIN, DOCTOR, PATIENT |
+| POST | `/doctors/:doctorId/specialties` | ADMIN |
+| DELETE | `/doctors/:doctorId/specialties/:specialtyId` | ADMIN |
+
+### Agendamentos
+
+| Método | Rota | Acesso |
+|---|---|---|
+| POST | `/schedules` | ADMIN, PATIENT |
+| GET | `/schedules` | ADMIN, DOCTOR, PATIENT |
+| GET | `/schedules/:id` | ADMIN, próprio DOCTOR ou próprio PATIENT |
+| PUT | `/schedules/:id` | ADMIN |
+| PATCH | `/schedules/:id/status` | ADMIN, próprio DOCTOR ou próprio PATIENT |
+| DELETE | `/schedules/:id` | ADMIN |
+
+Regras importantes:
+
+- PATIENT só cria agendamento para si mesmo.
+- DOCTOR só visualiza seus próprios agendamentos.
+- PATIENT só visualiza seus próprios agendamentos.
+- PATIENT só pode cancelar o próprio agendamento.
+- ADMIN possui acesso administrativo.
+
+## Padrão de Respostas
+
+Respostas de sucesso seguem o formato:
 
 ```json
 {
-  "data": [],
+  "data": {},
   "meta": {
-    "totalItems": 20,
-    "page": 2,
-    "limit": 10,
-    "totalPages": 5
+    "timestamp": "2026-05-23T10:00:00.000Z",
+    "path": "/resource"
   }
 }
 ```
 
-Parâmetros: `page`, `limit`, `sort` (ex: `name:asc`), `search`
+## Formato de Erros
+
+Os erros seguem o padrão RFC 7807.
+
+## Logging
+
+Todas as requisições são registradas com:
+- método HTTP
+- URL
+- status da resposta
+- tempo de processamento
+- IP do cliente
+
+## Arquitetura
+
+O projeto utiliza:
+- NestJS
+- TypeORM
+- SQLite
+- JWT
+- Passport
+- Swagger
+
+## Decisões Técnicas
+
+### STI
+
+O sistema utiliza Single Table Inheritance para usuários e agendamentos.
+
+### Soft Delete
+
+Usuários são inativados com `isActive = false`.
+
+### Refresh Token
+
+O refresh token é salvo com hash bcrypt e possui rotação.
+
+## Versões
+
+- NestJS: 11.x
+- TypeORM: 0.3.x
+- Node.js: 20.11.0
+- Banco de dados: SQLite (`sqlite3`)
