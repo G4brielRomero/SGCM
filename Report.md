@@ -10,7 +10,7 @@ Data: Maio de 2026
 
 Participação de todos: Desenvolvimento inicial com estruturação, entidades, controllers, service, module, dto, filtros, relatório e testes. Implementações principais, como por exemplo auth, interception, middleware e etc.
 
-Gabriel Romero: Correção de incoerências na atualização dos CPFs, criação do ProblemDetailDto para as respostas de erro, testes de caso em maneira geral.
+Gabriel Romero: Criação e implementação do middleware de logging, remoção de alguns intens que estavam duplicados, testes e correções de funcionamento das requisições e endpoints.
 
 Murilo José Silva: Adicionando comentários para melhor entendimento, correção de conflito em agendamento, validações de dto, serialização e testes. Contribuição/implementação na parte de autenticação. Fix de token e refresh token que estava sendo possivel usar mesmo depois de solicitar um novo token. Atualização parcial do diagrama.
 
