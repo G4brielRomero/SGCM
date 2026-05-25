@@ -37,6 +37,8 @@ abstract class User {
   #password: string
   +type: UserType
   +isActive: boolean
+  #refreshToken: string | null
+  #refreshTokenJti: string | null
   +createdAt: Date
   +updatedAt: Date
 }
@@ -78,9 +80,10 @@ abstract class Schedule {
   +type: ScheduleType
   +doctorId: number
   +patientId: number
-  +cancelledAt: Date
-  +cancellationReason: string
-  +cancelledBy: number
+  +cancelledAt: Date | null
+  +cancellationReason: string | null
+  +createdBy: number | null
+  +cancelledBy: number | null
   +createdAt: Date
   +updatedAt: Date
 }
@@ -109,22 +112,43 @@ Schedule <|-- HomeSchedule
 Doctor "1" <-- "0..*" Schedule : doctor
 Patient "1" <-- "0..*" Schedule : patient
 
+' ─── Auditoria básica de agendamento ──────────────────────────────────────────
+
+User "0..1" <-- "0..*" Schedule : createdBy
+User "0..1" <-- "0..*" Schedule : cancelledBy
+
 ' ─── Notas ────────────────────────────────────────────────────────────────────
 
 note top of User
   STI — tabela única <b>users</b>
-  discriminada pela coluna <b>type</b>
+  discriminada pela coluna <b>type</b>.
+
+  Campos sensíveis:
+  - password
+  - refreshToken
+  - refreshTokenJti
+
+  Esses campos não são expostos nas respostas da API.
 end note
 
 note top of Schedule
   STI — tabela única <b>schedules</b>
-  discriminada pela coluna <b>type</b>
+  discriminada pela coluna <b>type</b>.
+
+  createdBy e cancelledBy são preenchidos
+  com o usuário autenticado via JWT.
 end note
 
 note on link
   Tabela intermediária
   <b>doctor_specialties</b>
-  (doctorId, specialtyId)
+  (specialtyId, doctorId)
+end note
+
+note bottom of User
+  Autenticação:
+  O usuário possui refreshToken e refreshTokenJti
+  para controle de sessão e refresh token rotation.
 end note
 
 @enduml
