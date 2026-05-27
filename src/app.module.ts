@@ -5,6 +5,7 @@ import { UsersModule } from './modules/users/users.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 
 @Module({
@@ -24,6 +25,7 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
     SpecialtiesModule,
     SchedulesModule,
     AuthModule,
+    AppointmentsModule,
   ],
 })
 export class AppModule implements NestModule {

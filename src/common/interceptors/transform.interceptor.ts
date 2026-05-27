@@ -27,11 +27,13 @@ export class TransformInterceptor<T>
 
     return next.handle().pipe(
       map((data) => {
-        //testes de debug para verificar o comportamento do interceptor
-        //console.log(`[TransformInterceptor] Processando ${request.method} ${request.url}`);
-
         // Não transforma se não houver corpo (204 No Content) ou se for null/undefined
         if (response.statusCode === 204 || data === null || data === undefined || data === '') {
+          return data;
+        }
+
+        // Não transforma respostas binárias (Buffer) — ex.: PDF
+        if (Buffer.isBuffer(data) || data instanceof Uint8Array) {
           return data;
         }
 
