@@ -1,0 +1,225 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Patch,
+  Query,
+  HttpCode,
+  HttpStatus,
+  ParseIntPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { plainToInstance } from 'class-transformer';
+import { ProblemDetailDto } from '../../common/dto/problem-detail.dto';
+import { AppointmentsService } from './appointments.service';
+import {
+  AppointmentResponseDto,
+  CreateAppointmentDto,
+  FindAppointmentsQueryDto,
+  UpdateAppointmentDto,
+} from './dto/appointment.dto';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { UserPayload } from '../auth/types/user-payload.interface';
+import { UserType } from '../users/entities/user.entity';
+import {
+  ApiEnvelopeResponse,
+  ApiPaginatedResponse,
+  ApiUnauthorizedResponse,
+} from '../../common/decorators/api-responses.decorator';
+
+// ═══════════════════════════════════════════════════════════════
+// /appointments
+// ═══════════════════════════════════════════════════════════════
+
+@ApiBearerAuth()
+@ApiTags('Appointments')
+@ApiUnauthorizedResponse()
+@Controller('appointments')
+export class AppointmentsController {
+  constructor(private readonly appointmentsService: AppointmentsService) {}
+
+  @Post()
+  @Roles(UserType.ADMIN, UserType.DOCTOR)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Criar atendimento a partir de agendamento confirmado',
+    description:
+      'ADMIN pode criar para qualquer médico. DOCTOR só pode criar para seus próprios agendamentos. ' +
+      'O agendamento deve estar com status CONFIRMED.',
+  })
+  @ApiEnvelopeResponse(AppointmentResponseDto, 201, 'Atendimento criado com sucesso.')
+  @ApiResponse({ status: 400, description: 'Dados inválidos, agendamento não CONFIRMED ou campos obrigatórios ausentes.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Sem permissão para criar atendimento neste agendamento.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
+  @ApiResponse({ status: 409, description: 'Já existe um atendimento para este agendamento.', type: ProblemDetailDto })
+  async create(
+    @Body() dto: CreateAppointmentDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const appointment = await this.appointmentsService.create(dto, currentUser);
+    return plainToInstance(AppointmentResponseDto, appointment, { excludeExtraneousValues: true });
+  }
+
+  @Get()
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
+  @ApiOperation({
+    summary: 'Listar atendimentos',
+    description: 'ADMIN visualiza todos. DOCTOR visualiza os próprios. PATIENT visualiza os próprios.',
+  })
+  @ApiPaginatedResponse(AppointmentResponseDto, 'Lista paginada de atendimentos.')
+  async findAll(
+    @Query() query: FindAppointmentsQueryDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const result = await this.appointmentsService.findAll(query, currentUser);
+    return {
+      ...result,
+      data: result.data.map((a) =>
+        plainToInstance(AppointmentResponseDto, a, { excludeExtraneousValues: true }),
+      ),
+    };
+  }
+
+  @Get(':id')
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiOperation({
+    summary: 'Buscar atendimento por ID',
+    description: 'ADMIN acessa qualquer. DOCTOR e PATIENT acessam apenas os próprios.',
+  })
+  @ApiEnvelopeResponse(AppointmentResponseDto, 200, 'Atendimento encontrado.')
+  @ApiResponse({ status: 403, description: 'Sem permissão para acessar este atendimento.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Atendimento não encontrado.', type: ProblemDetailDto })
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const appointment = await this.appointmentsService.findOne(id, currentUser);
+    return plainToInstance(AppointmentResponseDto, appointment, { excludeExtraneousValues: true });
+  }
+
+  @Put(':id')
+  @Roles(UserType.ADMIN, UserType.DOCTOR)
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiOperation({
+    summary: 'Atualizar dados do atendimento',
+    description:
+      'Permite atualizar atributos mutáveis de um atendimento IN_PROGRESS. ' +
+      'Não é possível alterar type, scheduleId ou status diretamente.',
+  })
+  @ApiEnvelopeResponse(AppointmentResponseDto, 200, 'Atendimento atualizado.')
+  @ApiResponse({ status: 400, description: 'Atendimento não está IN_PROGRESS.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Sem permissão para atualizar este atendimento.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Atendimento não encontrado.', type: ProblemDetailDto })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateAppointmentDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const appointment = await this.appointmentsService.update(id, dto, currentUser);
+    return plainToInstance(AppointmentResponseDto, appointment, { excludeExtraneousValues: true });
+  }
+
+  @Patch(':id/finish')
+  @Roles(UserType.ADMIN, UserType.DOCTOR)
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiOperation({
+    summary: 'Encerrar atendimento',
+    description:
+      'Transição IN_PROGRESS → FINISHED. Irreversível. ' +
+      'Após encerrado, o prontuário pode ser criado e, para Exames, o laudo pode ser emitido.',
+  })
+  @ApiEnvelopeResponse(AppointmentResponseDto, 200, 'Atendimento encerrado.')
+  @ApiResponse({ status: 400, description: 'Atendimento não está IN_PROGRESS.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Sem permissão para encerrar este atendimento.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Atendimento não encontrado.', type: ProblemDetailDto })
+  async finish(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const appointment = await this.appointmentsService.finish(id, currentUser);
+    return plainToInstance(AppointmentResponseDto, appointment, { excludeExtraneousValues: true });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// /doctors/:doctorId/appointments
+// ═══════════════════════════════════════════════════════════════
+
+@ApiBearerAuth()
+@ApiTags('Doctors')
+@ApiUnauthorizedResponse()
+@Controller('doctors/:doctorId/appointments')
+export class DoctorAppointmentsController {
+  constructor(private readonly appointmentsService: AppointmentsService) {}
+
+  @Get()
+  @Roles(UserType.ADMIN, UserType.DOCTOR)
+  @ApiParam({ name: 'doctorId', example: 1 })
+  @ApiOperation({
+    summary: 'Listar atendimentos de um médico',
+    description: 'ADMIN pode listar qualquer médico. DOCTOR só lista os próprios.',
+  })
+  @ApiPaginatedResponse(AppointmentResponseDto, 'Lista paginada de atendimentos do médico.')
+  @ApiResponse({ status: 403, description: 'Sem permissão.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Médico não encontrado.', type: ProblemDetailDto })
+  async findAll(
+    @Param('doctorId', ParseIntPipe) doctorId: number,
+    @Query() query: FindAppointmentsQueryDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const result = await this.appointmentsService.findByDoctor(doctorId, query, currentUser);
+    return {
+      ...result,
+      data: result.data.map((a) =>
+        plainToInstance(AppointmentResponseDto, a, { excludeExtraneousValues: true }),
+      ),
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// /patients/:patientId/appointments
+// ═══════════════════════════════════════════════════════════════
+
+@ApiBearerAuth()
+@ApiTags('Patients')
+@ApiUnauthorizedResponse()
+@Controller('patients/:patientId/appointments')
+export class PatientAppointmentsController {
+  constructor(private readonly appointmentsService: AppointmentsService) {}
+
+  @Get()
+  @Roles(UserType.ADMIN, UserType.PATIENT)
+  @ApiParam({ name: 'patientId', example: 2 })
+  @ApiOperation({
+    summary: 'Listar atendimentos de um paciente',
+    description: 'ADMIN pode listar qualquer paciente. PATIENT só lista os próprios.',
+  })
+  @ApiPaginatedResponse(AppointmentResponseDto, 'Lista paginada de atendimentos do paciente.')
+  @ApiResponse({ status: 403, description: 'Sem permissão.', type: ProblemDetailDto })
+  @ApiResponse({ status: 404, description: 'Paciente não encontrado.', type: ProblemDetailDto })
+  async findAll(
+    @Param('patientId', ParseIntPipe) patientId: number,
+    @Query() query: FindAppointmentsQueryDto,
+    @CurrentUser() currentUser: UserPayload,
+  ) {
+    const result = await this.appointmentsService.findByPatient(patientId, query, currentUser);
+    return {
+      ...result,
+      data: result.data.map((a) =>
+        plainToInstance(AppointmentResponseDto, a, { excludeExtraneousValues: true }),
+      ),
+    };
+  }
+}
