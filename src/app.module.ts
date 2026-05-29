@@ -6,6 +6,8 @@ import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { ProceduresModule } from './modules/procedures/procedures.module';
+import { MedicalRecordsModule } from './modules/medical-records/medical-records.module';
 import { LoggingMiddleware } from './common/middleware/logging.middleware';
 
 @Module({
@@ -26,6 +28,8 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
     SchedulesModule,
     AuthModule,
     AppointmentsModule,
+    ProceduresModule,
+    MedicalRecordsModule,
   ],
 })
 export class AppModule implements NestModule {
