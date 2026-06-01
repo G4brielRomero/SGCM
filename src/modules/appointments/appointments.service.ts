@@ -19,7 +19,7 @@ import {
 import { paginate, PaginatedResult } from '../../common/dto/pagination-query.dto';
 import { UserPayload } from '../auth/types/user-payload.interface';
 import { UserType } from '../users/entities/user.entity';
-import { ScheduleStatus } from '../schedules/entities/schedule.entity';
+import { Schedule, ScheduleStatus } from '../schedules/entities/schedule.entity';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
@@ -37,6 +37,9 @@ export class AppointmentsService {
     @InjectRepository(FollowUp)
     private readonly followUpRepository: Repository<FollowUp>,
 
+    @InjectRepository(Schedule)
+    private readonly scheduleRepository: Repository<Schedule>,
+
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
   ) {}
@@ -47,19 +50,17 @@ export class AppointmentsService {
 
   async create(dto: CreateAppointmentDto, currentUser: UserPayload): Promise<Appointment> {
     // 1. Carregar agendamento e verificar status
-    const schedule = await this.dataSource
-      .getRepository('schedules')
-      .createQueryBuilder('s')
-      .where('s.id = :id', { id: dto.scheduleId })
-      .getOne();
+    const schedule = await this.scheduleRepository.findOne({
+      where: { id: dto.scheduleId },
+    });
 
     if (!schedule) {
       throw new NotFoundException(`Agendamento com id ${dto.scheduleId} não encontrado.`);
     }
 
-    if ((schedule as any).status !== ScheduleStatus.CONFIRMED) {
+    if (schedule.status !== ScheduleStatus.CONFIRMED) {
       throw new BadRequestException(
-        `Apenas agendamentos com status CONFIRMED podem originar atendimentos. Status atual: ${(schedule as any).status}.`,
+        `Apenas agendamentos com status CONFIRMED podem originar atendimentos. Status atual: ${schedule.status}.`,
       );
     }
 
@@ -74,7 +75,7 @@ export class AppointmentsService {
     }
 
     // 3. Permissão: DOCTOR só pode criar atendimento do próprio agendamento
-    if (currentUser.type === UserType.DOCTOR && (schedule as any).doctorId !== currentUser.sub) {
+    if (currentUser.type === UserType.DOCTOR && schedule.doctorId !== currentUser.sub) {
       throw new ForbiddenException('Você só pode criar atendimentos para seus próprios agendamentos.');
     }
 
@@ -83,16 +84,18 @@ export class AppointmentsService {
 
     // 5. Se FollowUp: validar originAppointmentId
     if (dto.type === AppointmentType.FOLLOW_UP) {
-      await this.validateFollowUpOrigin(dto.originAppointmentId!, (schedule as any).patientId);
+      await this.validateFollowUpOrigin(dto.originAppointmentId!, schedule.patientId);
     }
 
     // 6. Transação: criar atendimento + marcar schedule como COMPLETED
     return this.dataSource.transaction(async (manager) => {
-      const scheduleRepo = manager.getRepository('schedules');
-      await scheduleRepo.update(dto.scheduleId, { status: ScheduleStatus.COMPLETED });
+      const scheduleRepo = manager.getRepository(Schedule);
+      await scheduleRepo.update(dto.scheduleId, {
+        status: ScheduleStatus.COMPLETED,
+      });
 
-      const doctorId: number = (schedule as any).doctorId;
-      const patientId: number = (schedule as any).patientId;
+      const doctorId: number = schedule.doctorId;
+      const patientId: number = schedule.patientId;
       const startedAt = new Date();
 
       let appointment: Appointment;
