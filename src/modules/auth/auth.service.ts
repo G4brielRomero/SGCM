@@ -34,6 +34,10 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido ou expirado.');
     }
 
+    if (payload.tokenType !== 'refresh') {
+      throw new UnauthorizedException('Token inválido: utilize o refreshToken, não o accessToken.');
+    }
+
     const user = await this.usersService.findActiveById(payload.sub);
 
     if (!user.refreshToken || !user.refreshTokenJti) {
@@ -89,11 +93,13 @@ export class AuthService {
     const accessPayload: UserPayload = {
       ...basePayload,
       jti: randomUUID(),
+      tokenType: 'access',
     };
 
     const refreshPayload: UserPayload = {
       ...basePayload,
       jti: randomUUID(),
+      tokenType: 'refresh',
     };
 
     const accessToken = await this.jwtService.signAsync(accessPayload, {
@@ -146,11 +152,19 @@ export class AuthService {
   }
 
   private getAccessExpiresIn(): StringValue {
-    return this.config.get<string>('JWT_EXPIRES_IN', '15m') as StringValue;
+    const value = this.config.get<string>('JWT_EXPIRES_IN');
+    if (!value) {
+      throw new Error('JWT_EXPIRES_IN não configurado no .env');
+    }
+    return value as StringValue;
   }
 
   private getRefreshExpiresIn(): StringValue {
-    return this.config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') as StringValue;
+    const value = this.config.get<string>('JWT_REFRESH_EXPIRES_IN');
+    if (!value) {
+      throw new Error('JWT_REFRESH_EXPIRES_IN não configurado no .env');
+    }
+    return value as StringValue;
   }
 
   private getBcryptSaltRounds(): number {

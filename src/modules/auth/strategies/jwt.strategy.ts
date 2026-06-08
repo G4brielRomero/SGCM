@@ -25,6 +25,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token inválido.');
     }
 
+    if (payload.tokenType !== 'access') {
+      throw new UnauthorizedException('Token inválido: utilize o accessToken para autenticação.');
+    }
+
     return payload;
   }
 }

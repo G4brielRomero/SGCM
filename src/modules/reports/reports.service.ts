@@ -4,12 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  StreamableFile,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import PDFDocument from 'pdfkit';
+import * as PDFDocument from 'pdfkit';
 import { Report, ReportStatus } from './entities/report.entity';
 import { FindReportsQueryDto, RevokeReportDto } from './dto/report.dto';
 import { AppointmentsService } from '../appointments/appointments.service';
@@ -31,6 +30,7 @@ export class ReportsService {
 
     private readonly appointmentsService: AppointmentsService,
     private readonly usersService: UsersService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async issue(appointmentId: number, currentUser: UserPayload): Promise<Report> {
@@ -54,33 +54,34 @@ export class ReportsService {
       throw new ForbiddenException('Você só pode emitir laudos dos seus próprios atendimentos.');
     }
 
-    const activeReport = await this.reportRepository.findOne({
-      where: {
+    return this.dataSource.transaction(async (manager) => {
+      const reportRepo = manager.getRepository(Report);
+
+      const activeReport = await reportRepo.findOne({
+        where: { appointmentId, status: ReportStatus.ACTIVE },
+      });
+
+      if (activeReport) {
+        throw new ConflictException(
+          `Já existe um laudo ACTIVE para o exame ${appointmentId}. Revogue o laudo atual antes de emitir outro.`,
+        );
+      }
+
+      const report = reportRepo.create({
         appointmentId,
+        doctorId: appointment.doctorId,
+        patientId: appointment.patientId,
+        validationCode: randomUUID(),
         status: ReportStatus.ACTIVE,
-      },
+        issuedAt: new Date(),
+        issuedBy: currentUser.sub,
+        revokedAt: null,
+        revokedBy: null,
+        revokedReason: null,
+      });
+
+      return reportRepo.save(report);
     });
-
-    if (activeReport) {
-      throw new ConflictException(
-        `Já existe um laudo ACTIVE para o exame ${appointmentId}. Revogue o laudo atual antes de emitir outro.`,
-      );
-    }
-
-    const report = this.reportRepository.create({
-      appointmentId,
-      doctorId: appointment.doctorId,
-      patientId: appointment.patientId,
-      validationCode: randomUUID(),
-      status: ReportStatus.ACTIVE,
-      issuedAt: new Date(),
-      issuedBy: currentUser.sub,
-      revokedAt: null,
-      revokedBy: null,
-      revokedReason: null,
-    });
-
-    return this.reportRepository.save(report);
   }
 
   async findOne(id: number, currentUser: UserPayload): Promise<Report> {
@@ -114,6 +115,7 @@ export class ReportsService {
       issuedAt: report.issuedAt,
       patientName: patient.name,
       doctorName: doctor.name,
+      doctorCrm: (doctor as any).crm ?? null,
       examType: exam.examType,
       revokedAt: report.revokedAt,
       revokedReason: report.revokedReason,
@@ -151,7 +153,7 @@ export class ReportsService {
     return this.reportRepository.save(report);
   }
 
-  async getPdf(id: number, currentUser: UserPayload): Promise<Buffer> {
+  async getPdf(id: number, currentUser: UserPayload): Promise<{ buffer: Buffer; validationCode: string }> {
     const report = await this.findOne(id, currentUser);
 
     const appointment = await this.appointmentsService.findOneInternal(report.appointmentId);
@@ -159,13 +161,16 @@ export class ReportsService {
     const doctor = await this.usersService.findDoctor(report.doctorId);
     const patient = await this.usersService.findPatient(report.patientId);
 
-    return this.generatePdfBuffer({
+    const buffer = await this.generatePdfBuffer({
       report,
       examType: exam.examType,
       result: exam.result,
       doctorName: doctor.name,
+      doctorCrm: (doctor as any).crm ?? null,
       patientName: patient.name,
     });
+
+    return { buffer, validationCode: report.validationCode };
   }
 
   async findByPatient(
@@ -179,11 +184,22 @@ export class ReportsService {
 
     await this.usersService.findPatientOrFail(patientId);
 
-    const { page = 1, limit = 20, sort } = query;
+    const { page = 1, limit = 20, sort, search } = query;
 
     const qb = this.reportRepository
       .createQueryBuilder('r')
       .where('r.patientId = :patientId', { patientId });
+
+    if (currentUser.type === UserType.DOCTOR) {
+      qb.andWhere('r.doctorId = :doctorId', { doctorId: currentUser.sub });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(r.validationCode LIKE :search OR r.revokedReason LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
 
     this.applySorting(qb, sort, 'r');
     qb.skip((page - 1) * limit).take(limit);
@@ -203,11 +219,18 @@ export class ReportsService {
 
     await this.usersService.findDoctorOrFail(doctorId);
 
-    const { page = 1, limit = 20, sort } = query;
+    const { page = 1, limit = 20, sort, search } = query;
 
     const qb = this.reportRepository
       .createQueryBuilder('r')
       .where('r.doctorId = :doctorId', { doctorId });
+
+    if (search) {
+      qb.andWhere(
+        '(r.validationCode LIKE :search OR r.revokedReason LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
 
     this.applySorting(qb, sort, 'r');
     qb.skip((page - 1) * limit).take(limit);
@@ -238,6 +261,7 @@ export class ReportsService {
     examType: string;
     result: string;
     doctorName: string;
+    doctorCrm: string | null;
     patientName: string;
   }): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -252,7 +276,7 @@ export class ReportsService {
       doc.moveDown();
 
       doc.fontSize(12).text(`Paciente: ${data.patientName}`);
-      doc.text(`Médico: ${data.doctorName}`);
+      doc.text(`Médico: ${data.doctorName}${data.doctorCrm ? ` — CRM: ${data.doctorCrm}` : ''}`);
       doc.text(`Tipo de exame: ${data.examType}`);
       doc.text(`Data de emissão: ${data.report.issuedAt.toLocaleString('pt-BR')}`);
       doc.text(`Status: ${data.report.status}`);

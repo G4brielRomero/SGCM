@@ -35,4 +35,9 @@ export class SpecializedProcedure extends Procedure {
 
   @Column({ type: 'text', nullable: true })
   deniedReason: string | null;
+
+  constructor() {
+    super();
+    this.type = ProcedureType.SPECIALIZED;
+  }
 }

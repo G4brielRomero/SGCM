@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .env
-*.db
 .claude/
 CLAUDE.md
+DELETE
+GET
+PATCH
+POST
+server.log.*
+server.log

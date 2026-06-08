@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -43,8 +44,8 @@ export class ProceduresService {
   // CREATE
   // ─────────────────────────────────────────────────────────────────────
 
-  async create(dto: CreateProcedureDto, currentUser: UserPayload): Promise<Procedure> {
-    const appointment = await this.appointmentsService.findOneInternal(dto.appointmentId);
+  async create(dto: CreateProcedureDto, appointmentId: number, currentUser: UserPayload): Promise<Procedure> {
+    const appointment = await this.appointmentsService.findOneInternal(appointmentId);
 
     if (appointment.status !== AppointmentStatus.IN_PROGRESS) {
       throw new BadRequestException(
@@ -62,7 +63,7 @@ export class ProceduresService {
       const entity = this.simpleProcedureRepository.create({
         name: dto.name,
         description: dto.description,
-        appointmentId: dto.appointmentId,
+        appointmentId,
         estimatedDuration: dto.estimatedDuration!,
       });
       return this.simpleProcedureRepository.save(entity);
@@ -71,7 +72,7 @@ export class ProceduresService {
       const entity = this.specializedProcedureRepository.create({
         name: dto.name,
         description: dto.description,
-        appointmentId: dto.appointmentId,
+        appointmentId,
         requiredEquipment: dto.requiredEquipment!,
         complexityLevel: dto.complexityLevel!,
         requiresAuthorization: requiresAuth,
@@ -223,7 +224,7 @@ export class ProceduresService {
     const appointment = await this.appointmentsService.findOneInternal(procedure.appointmentId);
 
     if (appointment.status !== AppointmentStatus.IN_PROGRESS) {
-      throw new BadRequestException(
+      throw new ConflictException(
         'Procedimentos de atendimentos encerrados não podem ser removidos.',
       );
     }
@@ -273,11 +274,16 @@ export class ProceduresService {
   }
 
   private async findSpecializedOrFail(id: number): Promise<SpecializedProcedure> {
-    const procedure = await this.specializedProcedureRepository.findOne({ where: { id } });
-    if (!procedure) {
-      throw new NotFoundException(`Procedimento especializado com id ${id} não encontrado.`);
+    const base = await this.procedureRepository.findOne({ where: { id } });
+    if (!base) {
+      throw new NotFoundException(`Procedimento com id ${id} não encontrado.`);
     }
-    return procedure;
+    if (base.type !== ProcedureType.SPECIALIZED) {
+      throw new BadRequestException(
+        `O procedimento com id ${id} não é do tipo SPECIALIZED e não possui ciclo de autorização.`,
+      );
+    }
+    return base as SpecializedProcedure;
   }
 
   private ensureCanAccess(appointment: any, currentUser: UserPayload): void {

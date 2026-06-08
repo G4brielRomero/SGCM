@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
-import { Expose } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
@@ -21,22 +21,22 @@ export class CreateAppointmentDto {
   @Min(1)
   scheduleId: number;
 
-  @ApiProperty({ enum: AppointmentType, description: 'Tipo do atendimento' })
+  @ApiProperty({ enum: AppointmentType, description: 'Tipo do atendimento', example: AppointmentType.CONSULTATION })
   @IsEnum(AppointmentType)
   type: AppointmentType;
 
-  @ApiPropertyOptional({ description: 'Observações gerais do atendimento' })
+  @ApiPropertyOptional({ description: 'Observações gerais do atendimento', example: 'Paciente com dificuldade de locomoção.' })
   @IsOptional()
   @IsString()
   notes?: string;
 
   // ── Consultation ─────────────────────────────────────────────
-  @ApiPropertyOptional({ description: '[CONSULTATION] Motivo da consulta (obrigatório para CONSULTATION)' })
+  @ApiPropertyOptional({ description: '[CONSULTATION] Motivo da consulta (obrigatório para CONSULTATION)', example: 'Dor de cabeça frequente há 2 semanas.' })
   @IsOptional()
   @IsString()
   reason?: string;
 
-  @ApiPropertyOptional({ description: '[CONSULTATION] Hipótese diagnóstica inicial' })
+  @ApiPropertyOptional({ description: '[CONSULTATION] Hipótese diagnóstica inicial', example: 'Enxaqueca tensional.' })
   @IsOptional()
   @IsString()
   diagnosticHypothesis?: string;
@@ -47,19 +47,19 @@ export class CreateAppointmentDto {
   @IsString()
   examType?: string;
 
-  @ApiPropertyOptional({ description: '[EXAM] Resultado do exame (pode ser preenchido depois)' })
+  @ApiPropertyOptional({ description: '[EXAM] Resultado do exame (pode ser preenchido depois)', example: 'Eritrócitos 4,5 M/μL, leucócitos 6.500/μL — dentro dos limites normais.' })
   @IsOptional()
   @IsString()
   result?: string;
 
   // ── FollowUp ──────────────────────────────────────────────────
-  @ApiPropertyOptional({ description: '[FOLLOW_UP] ID do atendimento anterior que originou este retorno (obrigatório para FOLLOW_UP)' })
+  @ApiPropertyOptional({ description: '[FOLLOW_UP] ID do atendimento anterior que originou este retorno (obrigatório para FOLLOW_UP)', example: 3 })
   @IsOptional()
   @IsInt()
   @Min(1)
   originAppointmentId?: number;
 
-  @ApiPropertyOptional({ description: '[FOLLOW_UP] Evolução clínica em relação ao atendimento anterior' })
+  @ApiPropertyOptional({ description: '[FOLLOW_UP] Evolução clínica em relação ao atendimento anterior', example: 'Paciente apresentou melhora após medicação inicial.' })
   @IsOptional()
   @IsString()
   clinicalEvolution?: string;
@@ -70,25 +70,25 @@ export class CreateAppointmentDto {
 // ─────────────────────────────────────────────────────────────
 
 export class UpdateAppointmentDto {
-  @ApiPropertyOptional({ description: 'Observações gerais do atendimento' })
+  @ApiPropertyOptional({ description: 'Observações gerais do atendimento', example: 'Paciente relatou melhora parcial dos sintomas.' })
   @IsOptional()
   @IsString()
   notes?: string;
 
   // Consultation
-  @ApiPropertyOptional({ description: '[CONSULTATION] Hipótese diagnóstica' })
+  @ApiPropertyOptional({ description: '[CONSULTATION] Hipótese diagnóstica', example: 'Hipertensão essencial confirmada.' })
   @IsOptional()
   @IsString()
   diagnosticHypothesis?: string;
 
   // Exam — result pode ser preenchido durante atendimento
-  @ApiPropertyOptional({ description: '[EXAM] Resultado do exame' })
+  @ApiPropertyOptional({ description: '[EXAM] Resultado do exame', example: 'Resultado dentro dos limites normais.' })
   @IsOptional()
   @IsString()
   result?: string;
 
   // FollowUp
-  @ApiPropertyOptional({ description: '[FOLLOW_UP] Evolução clínica' })
+  @ApiPropertyOptional({ description: '[FOLLOW_UP] Evolução clínica', example: 'Pressão arterial estabilizada com medicação.' })
   @IsOptional()
   @IsString()
   clinicalEvolution?: string;
@@ -101,22 +101,24 @@ export class UpdateAppointmentDto {
 export class FindAppointmentsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Filtrar por ID do médico', example: 1 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   doctorId?: number;
 
   @ApiPropertyOptional({ description: 'Filtrar por ID do paciente', example: 2 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   patientId?: number;
 
-  @ApiPropertyOptional({ enum: AppointmentType, description: 'Filtrar por tipo' })
+  @ApiPropertyOptional({ enum: AppointmentType, description: 'Filtrar por tipo', example: AppointmentType.CONSULTATION })
   @IsOptional()
   @IsEnum(AppointmentType)
   type?: AppointmentType;
 
-  @ApiPropertyOptional({ enum: AppointmentStatus, description: 'Filtrar por status' })
+  @ApiPropertyOptional({ enum: AppointmentStatus, description: 'Filtrar por status', example: AppointmentStatus.IN_PROGRESS })
   @IsOptional()
   @IsEnum(AppointmentStatus)
   status?: AppointmentStatus;
@@ -137,57 +139,57 @@ export class FindAppointmentsQueryDto extends PaginationQueryDto {
 // ─────────────────────────────────────────────────────────────
 
 export class AppointmentResponseDto {
-  @Expose() @ApiProperty({ example: 1 })
+  @Expose() @ApiProperty({ description: 'ID do atendimento', example: 1 })
   id: number;
 
-  @Expose() @ApiProperty({ enum: AppointmentType })
+  @Expose() @ApiProperty({ enum: AppointmentType, example: AppointmentType.CONSULTATION })
   type: AppointmentType;
 
-  @Expose() @ApiProperty({ enum: AppointmentStatus })
+  @Expose() @ApiProperty({ enum: AppointmentStatus, example: AppointmentStatus.IN_PROGRESS })
   status: AppointmentStatus;
 
-  @Expose() @ApiProperty({ example: 1 })
+  @Expose() @ApiProperty({ description: 'ID do agendamento que originou este atendimento', example: 1 })
   scheduleId: number;
 
-  @Expose() @ApiProperty({ example: 1 })
+  @Expose() @ApiProperty({ description: 'ID do médico', example: 1 })
   doctorId: number;
 
-  @Expose() @ApiProperty({ example: 2 })
+  @Expose() @ApiProperty({ description: 'ID do paciente', example: 2 })
   patientId: number;
 
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: 'Observações gerais', example: 'Paciente com dificuldade de locomoção.' })
   notes?: string;
 
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: 'Início do atendimento (ISO 8601)', example: '2026-06-07T09:00:00.000Z' })
   startedAt?: Date;
 
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: 'Encerramento do atendimento (ISO 8601)', example: '2026-06-07T10:15:00.000Z' })
   endedAt?: Date;
 
   // Consultation
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: '[CONSULTATION] Motivo da consulta', example: 'Dor de cabeça frequente há 2 semanas.' })
   reason?: string;
 
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: '[CONSULTATION] Hipótese diagnóstica', example: 'Enxaqueca tensional.' })
   diagnosticHypothesis?: string;
 
   // Exam
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: '[EXAM] Tipo de exame', example: 'hemograma' })
   examType?: string;
 
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: '[EXAM] Resultado do exame', example: 'Eritrócitos 4,5 M/μL — dentro dos limites normais.' })
   result?: string;
 
   // FollowUp
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: '[FOLLOW_UP] ID do atendimento que originou este retorno', example: 3 })
   originAppointmentId?: number;
 
-  @Expose() @ApiPropertyOptional()
+  @Expose() @ApiPropertyOptional({ description: '[FOLLOW_UP] Evolução clínica', example: 'Pressão arterial estabilizada com medicação.' })
   clinicalEvolution?: string;
 
-  @Expose() @ApiProperty()
+  @Expose() @ApiProperty({ example: '2026-06-07T09:00:00.000Z' })
   createdAt: Date;
 
-  @Expose() @ApiProperty()
+  @Expose() @ApiProperty({ example: '2026-06-07T09:00:00.000Z' })
   updatedAt: Date;
 }

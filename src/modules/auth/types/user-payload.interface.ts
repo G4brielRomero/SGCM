@@ -5,4 +5,5 @@ export interface UserPayload {
   email: string;
   type: UserType;
   jti: string;
+  tokenType: 'access' | 'refresh';
 }

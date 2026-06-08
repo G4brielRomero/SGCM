@@ -1,17 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
-import { Type, Expose } from 'class-transformer';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Expose } from 'class-transformer';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 export class CreateMedicalRecordDto {
-  @ApiProperty({ example: 1 })
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
-  appointmentId: number;
-
   @ApiProperty({ example: 'Hipertensão arterial sistêmica leve.' })
   @IsString()
   @IsNotEmpty()
