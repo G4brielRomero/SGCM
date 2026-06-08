@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -35,7 +35,7 @@ import { UserPayload } from '../auth/types/user-payload.interface';
 import { UserType } from '../users/entities/user.entity';
 import { ApiEnvelopeResponse, ApiPaginatedResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Schedules')
 @ApiUnauthorizedResponse()
 @Controller('schedules')
@@ -118,6 +118,7 @@ export class SchedulesController {
   })
   @ApiEnvelopeResponse(ScheduleResponseDto, 200, 'Agendamento atualizado.')
   @ApiResponse({ status: 400, description: 'Dados inválidos ou modalidade alterada.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode atualizar agendamentos.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -162,6 +163,7 @@ export class SchedulesController {
     description: 'Apenas ADMIN pode excluir agendamentos.',
   })
   @ApiResponse({ status: 204, description: 'Agendamento excluído com sucesso.' })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode excluir agendamentos.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Agendamento COMPLETED não pode ser excluído.', type: ProblemDetailDto })
   async remove(@Param('id', ParseIntPipe) id: number) {
@@ -169,7 +171,7 @@ export class SchedulesController {
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @ApiUnauthorizedResponse()
 @Controller('doctors/:doctorId/schedules')
@@ -204,7 +206,7 @@ export class DoctorSchedulesController {
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Patients')
 @ApiUnauthorizedResponse()
 @Controller('patients/:patientId/schedules')

@@ -6,8 +6,13 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Schedule, ScheduleStatus, ScheduleType, ALLOWED_TRANSITIONS } from './entities/schedule.entity';
+import { EntityManager, Repository } from 'typeorm';
+import {
+  Schedule,
+  ScheduleStatus,
+  ScheduleType,
+  ALLOWED_TRANSITIONS,
+} from './entities/schedule.entity';
 import { InPersonSchedule } from './entities/in-person-schedule.entity';
 import { OnlineSchedule } from './entities/online-schedule.entity';
 import { HomeSchedule } from './entities/home-schedule.entity';
@@ -17,7 +22,10 @@ import {
   UpdateScheduleDto,
   UpdateScheduleStatusDto,
 } from './dto/schedule.dto';
-import { paginate, PaginatedResult } from '../../common/dto/pagination-query.dto';
+import {
+  paginate,
+  PaginatedResult,
+} from '../../common/dto/pagination-query.dto';
 import { UsersService } from '../users/users.service';
 import { UserPayload } from '../auth/types/user-payload.interface';
 import { UserType } from '../users/entities/user.entity';
@@ -40,8 +48,14 @@ export class SchedulesService {
     private readonly usersService: UsersService,
   ) {}
 
-  async create(dto: CreateScheduleDto, currentUser?: UserPayload): Promise<Schedule> {
+  async create(
+    dto: CreateScheduleDto,
+    currentUser?: UserPayload,
+  ): Promise<Schedule> {
     if (currentUser?.type === UserType.PATIENT) {
+      if (dto.patientId && dto.patientId !== currentUser.sub) {
+        throw new ForbiddenException('Você não tem permissão para criar agendamentos para outro paciente.');
+      }
       dto.patientId = currentUser.sub;
     }
 
@@ -56,7 +70,10 @@ export class SchedulesService {
     return this.persistSchedule(dto, currentUser?.sub);
   }
 
-  private async persistSchedule(dto: CreateScheduleDto, createdBy?: number): Promise<Schedule> {
+  private async persistSchedule(
+    dto: CreateScheduleDto,
+    createdBy?: number,
+  ): Promise<Schedule> {
     if (dto.type === ScheduleType.IN_PERSON) {
       const schedule = this.inPersonRepository.create({
         scheduledAt: new Date(dto.scheduledAt),
@@ -120,9 +137,12 @@ export class SchedulesService {
     if (search) {
       qb.leftJoin('schedule.doctor', 'searchDoctor')
         .leftJoin('schedule.patient', 'searchPatient')
-        .andWhere('searchDoctor.name LIKE :search OR searchPatient.name LIKE :search', {
-          search: `%${search}%`,
-        });
+        .andWhere(
+          'searchDoctor.name LIKE :search OR searchPatient.name LIKE :search',
+          {
+            search: `%${search}%`,
+          },
+        );
     }
 
     if (doctorId) {
@@ -178,7 +198,9 @@ export class SchedulesService {
     const schedule = await this.scheduleRepository.findOne({ where: { id } });
 
     if (!schedule) {
-      throw new NotFoundException(`Agendamento com id ${id} não foi encontrado.`);
+      throw new NotFoundException(
+        `Agendamento com id ${id} não foi encontrado.`,
+      );
     }
 
     if (currentUser) {
@@ -191,17 +213,26 @@ export class SchedulesService {
   async update(id: number, dto: UpdateScheduleDto): Promise<Schedule> {
     const schedule = await this.findOne(id);
 
-    if ([ScheduleStatus.CANCELLED, ScheduleStatus.COMPLETED].includes(schedule.status)) {
-      throw new BadRequestException(`Agendamento com status ${schedule.status} não pode ser atualizado.`);
+    if (
+      [ScheduleStatus.CANCELLED, ScheduleStatus.COMPLETED].includes(
+        schedule.status,
+      )
+    ) {
+      throw new BadRequestException(
+        `Agendamento com status ${schedule.status} não pode ser atualizado.`,
+      );
     }
 
     if (dto.type && dto.type !== schedule.type) {
-      throw new BadRequestException('Não é permitido alterar a modalidade do agendamento.');
+      throw new BadRequestException(
+        'Não é permitido alterar a modalidade do agendamento.',
+      );
     }
 
     const nextDoctorId = dto.doctorId ?? schedule.doctorId;
     const nextPatientId = dto.patientId ?? schedule.patientId;
-    const nextScheduledAt = dto.scheduledAt ?? schedule.scheduledAt.toISOString();
+    const nextScheduledAt =
+      dto.scheduledAt ?? schedule.scheduledAt.toISOString();
 
     if (dto.doctorId) {
       await this.usersService.findDoctorOrFail(dto.doctorId);
@@ -219,7 +250,9 @@ export class SchedulesService {
 
     Object.assign(schedule, {
       ...dto,
-      scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : schedule.scheduledAt,
+      scheduledAt: dto.scheduledAt
+        ? new Date(dto.scheduledAt)
+        : schedule.scheduledAt,
       doctorId: nextDoctorId,
       patientId: nextPatientId,
     });
@@ -249,7 +282,11 @@ export class SchedulesService {
     }
 
     if (newStatus === ScheduleStatus.CONFIRMED) {
-      await this.checkScheduleConflict(schedule.doctorId, schedule.scheduledAt.toISOString(), id);
+      await this.checkScheduleConflict(
+        schedule.doctorId,
+        schedule.scheduledAt.toISOString(),
+        id,
+      );
     }
 
     schedule.status = newStatus;
@@ -263,8 +300,17 @@ export class SchedulesService {
     return this.scheduleRepository.save(schedule);
   }
 
-  async complete(id: number): Promise<Schedule> {
-    const schedule = await this.findOne(id);
+  async complete(id: number, manager?: EntityManager): Promise<Schedule> {
+    const scheduleRepo = manager
+      ? manager.getRepository(Schedule)
+      : this.scheduleRepository;
+
+    const schedule = await scheduleRepo.findOne({ where: { id } });
+    if (!schedule) {
+      throw new NotFoundException(
+        `Agendamento com id ${id} não foi encontrado.`,
+      );
+    }
 
     if (schedule.status !== ScheduleStatus.CONFIRMED) {
       throw new BadRequestException(
@@ -274,7 +320,7 @@ export class SchedulesService {
 
     schedule.status = ScheduleStatus.COMPLETED;
 
-    return this.scheduleRepository.save(schedule);
+    return scheduleRepo.save(schedule);
   }
 
   async remove(id: number): Promise<void> {
@@ -295,7 +341,9 @@ export class SchedulesService {
     currentUser?: UserPayload,
   ): Promise<PaginatedResult<Schedule>> {
     if (currentUser?.type === UserType.DOCTOR && currentUser.sub !== doctorId) {
-      throw new ForbiddenException('Você não tem permissão para acessar os agendamentos deste médico.');
+      throw new ForbiddenException(
+        'Você não tem permissão para acessar os agendamentos deste médico.',
+      );
     }
 
     await this.usersService.findDoctorOrFail(doctorId);
@@ -308,8 +356,13 @@ export class SchedulesService {
     query: FindSchedulesQueryDto,
     currentUser?: UserPayload,
   ): Promise<PaginatedResult<Schedule>> {
-    if (currentUser?.type === UserType.PATIENT && currentUser.sub !== patientId) {
-      throw new ForbiddenException('Você não tem permissão para acessar os agendamentos deste paciente.');
+    if (
+      currentUser?.type === UserType.PATIENT &&
+      currentUser.sub !== patientId
+    ) {
+      throw new ForbiddenException(
+        'Você não tem permissão para acessar os agendamentos deste paciente.',
+      );
     }
 
     await this.usersService.findPatientOrFail(patientId);
@@ -317,7 +370,10 @@ export class SchedulesService {
     return this.findAll({ ...query, patientId }, currentUser);
   }
 
-  private ensureCanCreateSchedule(dto: CreateScheduleDto, currentUser?: UserPayload): void {
+  private ensureCanCreateSchedule(
+    dto: CreateScheduleDto,
+    currentUser?: UserPayload,
+  ): void {
     if (!currentUser) {
       return;
     }
@@ -326,27 +382,43 @@ export class SchedulesService {
       return;
     }
 
-    if (currentUser.type === UserType.PATIENT && currentUser.sub === dto.patientId) {
+    if (
+      currentUser.type === UserType.PATIENT &&
+      currentUser.sub === dto.patientId
+    ) {
       return;
     }
 
-    throw new ForbiddenException('Você não tem permissão para criar este agendamento.');
+    throw new ForbiddenException(
+      'Você não tem permissão para criar este agendamento.',
+    );
   }
 
-  private ensureCanAccessSchedule(schedule: Schedule, currentUser: UserPayload): void {
+  private ensureCanAccessSchedule(
+    schedule: Schedule,
+    currentUser: UserPayload,
+  ): void {
     if (currentUser.type === UserType.ADMIN) {
       return;
     }
 
-    if (currentUser.type === UserType.DOCTOR && schedule.doctorId === currentUser.sub) {
+    if (
+      currentUser.type === UserType.DOCTOR &&
+      schedule.doctorId === currentUser.sub
+    ) {
       return;
     }
 
-    if (currentUser.type === UserType.PATIENT && schedule.patientId === currentUser.sub) {
+    if (
+      currentUser.type === UserType.PATIENT &&
+      schedule.patientId === currentUser.sub
+    ) {
       return;
     }
 
-    throw new ForbiddenException('Você não tem permissão para acessar este agendamento.');
+    throw new ForbiddenException(
+      'Você não tem permissão para acessar este agendamento.',
+    );
   }
 
   private ensureCanUpdateScheduleStatus(
@@ -360,7 +432,9 @@ export class SchedulesService {
 
     if (currentUser.type === UserType.DOCTOR) {
       if (schedule.doctorId !== currentUser.sub) {
-        throw new ForbiddenException('Você não tem permissão para alterar este agendamento.');
+        throw new ForbiddenException(
+          'Você não tem permissão para alterar este agendamento.',
+        );
       }
 
       return;
@@ -368,17 +442,23 @@ export class SchedulesService {
 
     if (currentUser.type === UserType.PATIENT) {
       if (schedule.patientId !== currentUser.sub) {
-        throw new ForbiddenException('Você não tem permissão para alterar este agendamento.');
+        throw new ForbiddenException(
+          'Você não tem permissão para alterar este agendamento.',
+        );
       }
 
       if (dto.status !== ScheduleStatus.CANCELLED) {
-        throw new ForbiddenException('Paciente só pode cancelar o próprio agendamento.');
+        throw new ForbiddenException(
+          'Paciente só pode cancelar o próprio agendamento.',
+        );
       }
 
       return;
     }
 
-    throw new ForbiddenException('Você não tem permissão para alterar este agendamento.');
+    throw new ForbiddenException(
+      'Você não tem permissão para alterar este agendamento.',
+    );
   }
 
   private validateFutureDate(scheduledAt: string): void {
@@ -397,7 +477,9 @@ export class SchedulesService {
     const qb = this.scheduleRepository
       .createQueryBuilder('schedule')
       .where('schedule.doctorId = :doctorId', { doctorId })
-      .andWhere('schedule.status = :status', { status: ScheduleStatus.CONFIRMED })
+      .andWhere('schedule.status = :status', {
+        status: ScheduleStatus.CONFIRMED,
+      })
       .andWhere('schedule.scheduledAt = :scheduledAt', {
         scheduledAt: new Date(scheduledAt),
       });
@@ -434,6 +516,9 @@ export class SchedulesService {
     const [field, direction] = sort.split(':');
     const safeField = allowedFields.includes(field) ? field : defaultField;
 
-    qb.orderBy(`${alias}.${safeField}`, direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC');
+    qb.orderBy(
+      `${alias}.${safeField}`,
+      direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+    );
   }
 }

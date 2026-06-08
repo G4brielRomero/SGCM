@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Get,
@@ -58,9 +58,12 @@ export class AuthController {
 
   @Post('logout')
   @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Realizar logout' })
+  @ApiOperation({
+    summary: 'Realizar logout',
+    description: 'Invalida o `refreshToken` da sessão atual. O `accessToken` em uso expira naturalmente em 15 minutos — novos tokens não poderão ser emitidos após o logout.',
+  })
   @ApiUnauthorizedResponse()
   async logout(@CurrentUser() user: UserPayload) {
     await this.authService.logout(user);
@@ -68,8 +71,11 @@ export class AuthController {
 
   @Get('me')
   @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Retornar usuário autenticado' })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Retornar usuário autenticado',
+    description: 'Retorna o perfil completo do usuário dono do token. O schema varia por perfil: DOCTOR inclui `crm`; PATIENT inclui `cpf` e `birthDate`; ADMIN retorna apenas os campos base.',
+  })
   @ApiUnauthorizedResponse()
   async me(@CurrentUser() user: UserPayload) {
     const currentUser = await this.authService.me(user);

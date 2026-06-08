@@ -133,12 +133,12 @@ export class FindSchedulesQueryDto extends PaginationQueryDto {
   @IsPositive()
   patientId?: number;
 
-  @ApiPropertyOptional({ enum: ScheduleStatus })
+  @ApiPropertyOptional({ enum: ScheduleStatus, example: ScheduleStatus.CONFIRMED })
   @IsOptional()
   @IsEnum(ScheduleStatus)
   status?: ScheduleStatus;
 
-  @ApiPropertyOptional({ enum: ScheduleType })
+  @ApiPropertyOptional({ enum: ScheduleType, example: ScheduleType.IN_PERSON })
   @IsOptional()
   @IsEnum(ScheduleType)
   type?: ScheduleType;

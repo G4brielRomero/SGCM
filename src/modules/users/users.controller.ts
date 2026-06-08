@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -31,7 +31,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserPayload } from '../auth/types/user-payload.interface';
 import { ApiEnvelopeResponse, ApiPaginatedResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Users')
 @ApiUnauthorizedResponse()
 @Controller('users')
@@ -47,6 +47,7 @@ export class UsersController {
   })
   @ApiEnvelopeResponse(UserResponseDto, 201, 'Usuário criado.')
   @ApiResponse({ status: 400, description: 'Dados inválidos.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode criar usuários.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'E-mail, CRM ou CPF já cadastrado.', type: ProblemDetailDto })
   async create(@Body() dto: CreateUserDto) {
     const user = await this.usersService.create(dto);
@@ -60,6 +61,7 @@ export class UsersController {
     description: 'Apenas ADMIN pode listar todos os usuários.',
   })
   @ApiPaginatedResponse(UserResponseDto, 'Lista paginada de usuários.')
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode listar usuários.', type: ProblemDetailDto })
   async findAll(@Query() query: FindUsersQueryDto) {
     const result = await this.usersService.findAll(query);
 
@@ -146,7 +148,7 @@ export class UsersController {
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @ApiUnauthorizedResponse()
 @Controller('doctors')
@@ -191,7 +193,7 @@ export class DoctorsController {
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Patients')
 @ApiUnauthorizedResponse()
 @Controller('patients')

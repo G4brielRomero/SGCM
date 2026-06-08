@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -17,6 +17,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiBody,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { ProblemDetailDto } from '../../common/dto/problem-detail.dto';
@@ -41,7 +42,7 @@ import {
 // /appointments
 // ═══════════════════════════════════════════════════════════════
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Appointments')
 @ApiUnauthorizedResponse()
 @Controller('appointments')
@@ -56,6 +57,66 @@ export class AppointmentsController {
     description:
       'ADMIN pode criar para qualquer médico. DOCTOR só pode criar para seus próprios agendamentos. ' +
       'O agendamento deve estar com status CONFIRMED.',
+  })
+  @ApiBody({
+    schema: {
+      oneOf: [
+        {
+          title: 'CONSULTATION',
+          required: ['scheduleId', 'type', 'reason'],
+          properties: {
+            scheduleId: { type: 'integer', example: 1 },
+            type: { type: 'string', enum: ['CONSULTATION'], example: 'CONSULTATION' },
+            notes: { type: 'string', example: 'Paciente com dificuldade de locomoção.' },
+            reason: { type: 'string', example: 'Dor de cabeça frequente há 2 semanas.' },
+            diagnosticHypothesis: { type: 'string', example: 'Enxaqueca tensional.' },
+          },
+          example: {
+            scheduleId: 1,
+            type: 'CONSULTATION',
+            notes: 'Paciente com dificuldade de locomoção.',
+            reason: 'Dor de cabeça frequente há 2 semanas.',
+            diagnosticHypothesis: 'Enxaqueca tensional.',
+          },
+        },
+        {
+          title: 'EXAM',
+          required: ['scheduleId', 'type', 'examType'],
+          properties: {
+            scheduleId: { type: 'integer', example: 1 },
+            type: { type: 'string', enum: ['EXAM'], example: 'EXAM' },
+            notes: { type: 'string', example: 'Exame solicitado pelo médico assistente.' },
+            examType: { type: 'string', example: 'hemograma' },
+            result: { type: 'string', example: 'Eritrócitos 4,5 M/μL, leucócitos 6.500/μL — dentro dos limites normais.' },
+          },
+          example: {
+            scheduleId: 2,
+            type: 'EXAM',
+            notes: 'Exame solicitado pelo médico assistente.',
+            examType: 'hemograma',
+          },
+        },
+        {
+          title: 'FOLLOW_UP',
+          required: ['scheduleId', 'type', 'originAppointmentId'],
+          properties: {
+            scheduleId: { type: 'integer', example: 1 },
+            type: { type: 'string', enum: ['FOLLOW_UP'], example: 'FOLLOW_UP' },
+            notes: { type: 'string', example: 'Retorno 15 dias após início do tratamento.' },
+            originAppointmentId: { type: 'integer', example: 3 },
+            clinicalEvolution: { type: 'string', example: 'Paciente apresentou melhora após medicação inicial.' },
+          },
+          example: {
+            scheduleId: 5,
+            type: 'FOLLOW_UP',
+            notes: 'Retorno 15 dias após início do tratamento.',
+            originAppointmentId: 3,
+            clinicalEvolution: 'Paciente apresentou melhora após medicação inicial.',
+          },
+        },
+      ],
+      discriminator: { propertyName: 'type' },
+    },
   })
   @ApiEnvelopeResponse(AppointmentResponseDto, 201, 'Atendimento criado com sucesso.')
   @ApiResponse({ status: 400, description: 'Dados inválidos, agendamento não CONFIRMED ou campos obrigatórios ausentes.', type: ProblemDetailDto })
@@ -156,7 +217,7 @@ export class AppointmentsController {
 // /doctors/:doctorId/appointments
 // ═══════════════════════════════════════════════════════════════
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @ApiUnauthorizedResponse()
 @Controller('doctors/:doctorId/appointments')
@@ -192,7 +253,7 @@ export class DoctorAppointmentsController {
 // /patients/:patientId/appointments
 // ═══════════════════════════════════════════════════════════════
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Patients')
 @ApiUnauthorizedResponse()
 @Controller('patients/:patientId/appointments')

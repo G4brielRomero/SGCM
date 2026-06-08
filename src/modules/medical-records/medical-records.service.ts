@@ -35,8 +35,8 @@ export class MedicalRecordsService {
   // CREATE
   // ─────────────────────────────────────────────────────────────────────
 
-  async create(dto: CreateMedicalRecordDto, currentUser: UserPayload): Promise<MedicalRecord> {
-    const appointment = await this.appointmentsService.findOneInternal(dto.appointmentId);
+  async create(dto: CreateMedicalRecordDto, appointmentId: number, currentUser: UserPayload): Promise<MedicalRecord> {
+    const appointment = await this.appointmentsService.findOneInternal(appointmentId);
 
     if (appointment.status !== AppointmentStatus.FINISHED) {
       throw new BadRequestException(
@@ -49,16 +49,16 @@ export class MedicalRecordsService {
     }
 
     const existing = await this.recordRepository.findOne({
-      where: { appointmentId: dto.appointmentId },
+      where: { appointmentId },
     });
     if (existing) {
       throw new ConflictException(
-        `Já existe um prontuário (id ${existing.id}) para o atendimento ${dto.appointmentId}.`,
+        `Já existe um prontuário (id ${existing.id}) para o atendimento ${appointmentId}.`,
       );
     }
 
     const record = this.recordRepository.create({
-      appointmentId: dto.appointmentId,
+      appointmentId,
       doctorId: appointment.doctorId,
       patientId: appointment.patientId,
       diagnosis: dto.diagnosis,
@@ -149,6 +149,10 @@ export class MedicalRecordsService {
     const qb = this.recordRepository
       .createQueryBuilder('r')
       .where('r.patientId = :patientId', { patientId });
+
+    if (currentUser.type === UserType.DOCTOR) {
+      qb.andWhere('r.doctorId = :doctorId', { doctorId: currentUser.sub });
+    }
 
     this.applySorting(qb, sort, 'r');
     qb.skip((page - 1) * limit).take(limit);

@@ -28,12 +28,6 @@ export class CreateProcedureDto {
   @IsNotEmpty()
   description: string;
 
-  @ApiProperty({ example: 1 })
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
-  appointmentId: number;
-
   @ApiProperty({ enum: ProcedureType, example: ProcedureType.SIMPLE })
   @IsEnum(ProcedureType)
   type: ProcedureType;
@@ -66,13 +60,13 @@ export class CreateProcedureDto {
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export class UpdateProcedureDto {
-  @ApiPropertyOptional({ example: 'Eletrocardiograma revisado' })
+  @ApiPropertyOptional({ example: 'ECG com Mapeamento de 12 Derivações' })
   @IsOptional()
   @IsString()
   @IsNotEmpty()
   name?: string;
 
-  @ApiPropertyOptional({ example: 'Descrição atualizada.' })
+  @ApiPropertyOptional({ example: 'Duração revisada após análise do quadro clínico do paciente.' })
   @IsOptional()
   @IsString()
   description?: string;
@@ -86,21 +80,34 @@ export class UpdateProcedureDto {
   estimatedDuration?: number;
 
   // SpecializedProcedure
-  @ApiPropertyOptional({ example: 'Novo equipamento' })
+  @ApiPropertyOptional({ example: 'Eletrocardiógrafo digital de 12 derivações' })
   @IsOptional()
   @IsString()
   requiredEquipment?: string;
 
-  @ApiPropertyOptional({ enum: ComplexityLevel })
+  @ApiPropertyOptional({ enum: ComplexityLevel, example: ComplexityLevel.HIGH })
   @IsOptional()
   @IsEnum(ComplexityLevel)
   complexityLevel?: ComplexityLevel;
 }
 
-// ─── Deny ─────────────────────────────────────────────────────────────────────
+// ─── Deny (legacy — usado internamente) ──────────────────────────────────────
 
 export class DenyProcedureDto {
   @ApiPropertyOptional({ example: 'Equipamento indisponível no momento.' })
+  @IsOptional()
+  @IsString()
+  deniedReason?: string;
+}
+
+// ─── Authorization (PATCH /procedures/{id}/authorization) ────────────────────
+
+export class AuthorizeProcedureDto {
+  @ApiProperty({ enum: ['AUTHORIZE', 'DENY'], example: 'AUTHORIZE', description: 'Ação de autorização: AUTHORIZE ou DENY.' })
+  @IsEnum(['AUTHORIZE', 'DENY'])
+  action: 'AUTHORIZE' | 'DENY';
+
+  @ApiPropertyOptional({ example: 'Equipamento indisponível no momento.', description: 'Motivo da negação (obrigatório quando action=DENY).' })
   @IsOptional()
   @IsString()
   deniedReason?: string;

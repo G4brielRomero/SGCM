@@ -43,8 +43,8 @@ export class ProceduresService {
   // CREATE
   // ─────────────────────────────────────────────────────────────────────
 
-  async create(dto: CreateProcedureDto, currentUser: UserPayload): Promise<Procedure> {
-    const appointment = await this.appointmentsService.findOneInternal(dto.appointmentId);
+  async create(dto: CreateProcedureDto, appointmentId: number, currentUser: UserPayload): Promise<Procedure> {
+    const appointment = await this.appointmentsService.findOneInternal(appointmentId);
 
     if (appointment.status !== AppointmentStatus.IN_PROGRESS) {
       throw new BadRequestException(
@@ -62,7 +62,7 @@ export class ProceduresService {
       const entity = this.simpleProcedureRepository.create({
         name: dto.name,
         description: dto.description,
-        appointmentId: dto.appointmentId,
+        appointmentId,
         estimatedDuration: dto.estimatedDuration!,
       });
       return this.simpleProcedureRepository.save(entity);
@@ -71,7 +71,7 @@ export class ProceduresService {
       const entity = this.specializedProcedureRepository.create({
         name: dto.name,
         description: dto.description,
-        appointmentId: dto.appointmentId,
+        appointmentId,
         requiredEquipment: dto.requiredEquipment!,
         complexityLevel: dto.complexityLevel!,
         requiresAuthorization: requiresAuth,

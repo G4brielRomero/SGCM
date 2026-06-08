@@ -90,6 +90,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       403: 'Acesso negado',
       404: 'Recurso não encontrado',
       409: 'Conflito de recurso',
+      422: 'Entidade não processável',
       500: 'Erro interno do servidor',
     };
     return titles[status] ?? 'Erro';
@@ -102,6 +103,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       403: 'https://sgcm.example.com/problems/forbidden',
       404: 'https://sgcm.example.com/problems/not-found',
       409: 'https://sgcm.example.com/problems/conflict',
+      422: 'https://sgcm.example.com/problems/unprocessable-entity',
       500: 'https://sgcm.example.com/problems/internal-server-error',
     };
     return types[status] ?? 'https://sgcm.example.com/problems/error';

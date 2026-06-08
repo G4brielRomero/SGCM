@@ -93,7 +93,7 @@ export class AdminReportsService {
       .clone()
       .select('p.authorizationStatus', 'authorizationStatus')
       .addSelect('COUNT(*)', 'count')
-      .where('p.type = :type', { type: 'SPECIALIZED' })
+      .andWhere('p.type = :type', { type: 'SPECIALIZED' })
       .groupBy('p.authorizationStatus')
       .getRawMany();
 
@@ -101,7 +101,7 @@ export class AdminReportsService {
       .clone()
       .select('p.complexityLevel', 'complexityLevel')
       .addSelect('COUNT(*)', 'count')
-      .where('p.type = :type', { type: 'SPECIALIZED' })
+      .andWhere('p.type = :type', { type: 'SPECIALIZED' })
       .groupBy('p.complexityLevel')
       .getRawMany();
 

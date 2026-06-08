@@ -5,4 +5,9 @@ import { Procedure, ProcedureType } from './procedure.entity';
 export class SimpleProcedure extends Procedure {
   @Column({ type: 'int' })
   estimatedDuration: number;
+
+  constructor() {
+    super();
+    this.type = ProcedureType.SIMPLE;
+  }
 }

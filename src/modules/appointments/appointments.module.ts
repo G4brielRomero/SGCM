@@ -6,7 +6,6 @@ import { Consultation } from './entities/consultation.entity';
 import { Exam } from './entities/exam.entity';
 import { FollowUp } from './entities/follow-up.entity';
 
-import { Schedule } from '../schedules/entities/schedule.entity';
 import { UsersModule } from '../users/users.module';
 import { SchedulesModule } from '../schedules/schedules.module';
 
@@ -24,7 +23,6 @@ import {
       Consultation,
       Exam,
       FollowUp,
-      Schedule,
     ]),
     UsersModule,
     SchedulesModule,

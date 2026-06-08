@@ -4,3 +4,9 @@ dist/
 *.db
 .claude/
 CLAUDE.md
+DELETE
+GET
+PATCH
+POST
+server.log.*
+server.log

@@ -4,12 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  StreamableFile,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import PDFDocument from 'pdfkit';
+import * as PDFDocument from 'pdfkit';
 import { Report, ReportStatus } from './entities/report.entity';
 import { FindReportsQueryDto, RevokeReportDto } from './dto/report.dto';
 import { AppointmentsService } from '../appointments/appointments.service';
@@ -31,6 +30,7 @@ export class ReportsService {
 
     private readonly appointmentsService: AppointmentsService,
     private readonly usersService: UsersService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async issue(appointmentId: number, currentUser: UserPayload): Promise<Report> {
@@ -54,33 +54,34 @@ export class ReportsService {
       throw new ForbiddenException('Você só pode emitir laudos dos seus próprios atendimentos.');
     }
 
-    const activeReport = await this.reportRepository.findOne({
-      where: {
+    return this.dataSource.transaction(async (manager) => {
+      const reportRepo = manager.getRepository(Report);
+
+      const activeReport = await reportRepo.findOne({
+        where: { appointmentId, status: ReportStatus.ACTIVE },
+      });
+
+      if (activeReport) {
+        throw new ConflictException(
+          `Já existe um laudo ACTIVE para o exame ${appointmentId}. Revogue o laudo atual antes de emitir outro.`,
+        );
+      }
+
+      const report = reportRepo.create({
         appointmentId,
+        doctorId: appointment.doctorId,
+        patientId: appointment.patientId,
+        validationCode: randomUUID(),
         status: ReportStatus.ACTIVE,
-      },
+        issuedAt: new Date(),
+        issuedBy: currentUser.sub,
+        revokedAt: null,
+        revokedBy: null,
+        revokedReason: null,
+      });
+
+      return reportRepo.save(report);
     });
-
-    if (activeReport) {
-      throw new ConflictException(
-        `Já existe um laudo ACTIVE para o exame ${appointmentId}. Revogue o laudo atual antes de emitir outro.`,
-      );
-    }
-
-    const report = this.reportRepository.create({
-      appointmentId,
-      doctorId: appointment.doctorId,
-      patientId: appointment.patientId,
-      validationCode: randomUUID(),
-      status: ReportStatus.ACTIVE,
-      issuedAt: new Date(),
-      issuedBy: currentUser.sub,
-      revokedAt: null,
-      revokedBy: null,
-      revokedReason: null,
-    });
-
-    return this.reportRepository.save(report);
   }
 
   async findOne(id: number, currentUser: UserPayload): Promise<Report> {
@@ -184,6 +185,10 @@ export class ReportsService {
     const qb = this.reportRepository
       .createQueryBuilder('r')
       .where('r.patientId = :patientId', { patientId });
+
+    if (currentUser.type === UserType.DOCTOR) {
+      qb.andWhere('r.doctorId = :doctorId', { doctorId: currentUser.sub });
+    }
 
     this.applySorting(qb, sort, 'r');
     qb.skip((page - 1) * limit).take(limit);
