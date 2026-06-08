@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
 
 // ── Etapa 1 ───────────────────────────────────────────────────────────────────
 import { User, UserType } from './modules/users/entities/user.entity';
@@ -171,14 +170,18 @@ async function seed() {
   // ── Laudos ────────────────────────────────────────────────────────────────
   const reportRepo = ds.getRepository(Report);
 
+  // UUIDs fixos para que o README possa documentar os códigos de validação
+  const CODE_ACTIVE  = '3c4e5f6a-7b8c-4d9e-8a0b-1c2d3e4f5a6b';
+  const CODE_REVOKED = '9f8e7d6c-5b4a-4321-9a8b-7c6d5e4f3a2b';
+
   // rep1 — ACTIVE para a3 (→ GET /reports/{id}/pdf, validação pública)
   const rep1e = new Report();
-  Object.assign(rep1e, { appointmentId: a3.id, doctorId: ana.id, patientId: maria.id, validationCode: randomUUID(), status: ReportStatus.ACTIVE, issuedAt: past(15), issuedBy: ana.id, revokedAt: null, revokedBy: null, revokedReason: null });
+  Object.assign(rep1e, { appointmentId: a3.id, doctorId: ana.id, patientId: maria.id, validationCode: CODE_ACTIVE, status: ReportStatus.ACTIVE, issuedAt: past(15), issuedBy: ana.id, revokedAt: null, revokedBy: null, revokedReason: null });
   const rep1 = await reportRepo.save(rep1e);
 
   // rep2 — REVOKED para a4 (→ rastreabilidade de revogação)
   const rep2e = new Report();
-  Object.assign(rep2e, { appointmentId: a4.id, doctorId: rafael.id, patientId: joao.id, validationCode: randomUUID(), status: ReportStatus.REVOKED, issuedAt: past(3), issuedBy: rafael.id, revokedAt: past(1), revokedBy: admin.id, revokedReason: 'Laudo emitido com identificação incorreta do paciente. Reemitido com correção.' });
+  Object.assign(rep2e, { appointmentId: a4.id, doctorId: rafael.id, patientId: joao.id, validationCode: CODE_REVOKED, status: ReportStatus.REVOKED, issuedAt: past(3), issuedBy: rafael.id, revokedAt: past(1), revokedBy: admin.id, revokedReason: 'Laudo emitido com identificação incorreta do paciente. Reemitido com correção.' });
   const rep2 = await reportRepo.save(rep2e);
 
   // ── Resumo ────────────────────────────────────────────────────────────────

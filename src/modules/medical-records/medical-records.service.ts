@@ -6,6 +6,7 @@ import {
   MethodNotAllowedException,
   NotFoundException,
 } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MedicalRecord } from './entities/medical-record.entity';
@@ -125,7 +126,7 @@ export class MedicalRecordsService {
   // ─────────────────────────────────────────────────────────────────────
 
   remove(): never {
-    throw new ConflictException(
+    throw new MethodNotAllowedException(
       'Prontuários são documentos clínicos permanentes e não podem ser excluídos.',
     );
   }
@@ -145,13 +146,20 @@ export class MedicalRecordsService {
 
     await this.usersService.findPatientOrFail(patientId);
 
-    const { page = 1, limit = 20, sort } = query;
+    const { page = 1, limit = 20, sort, search } = query;
     const qb = this.recordRepository
       .createQueryBuilder('r')
       .where('r.patientId = :patientId', { patientId });
 
     if (currentUser.type === UserType.DOCTOR) {
       qb.andWhere('r.doctorId = :doctorId', { doctorId: currentUser.sub });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(r.diagnosis LIKE :search OR r.prescription LIKE :search OR r.notes LIKE :search)',
+        { search: `%${search}%` },
+      );
     }
 
     this.applySorting(qb, sort, 'r');
@@ -176,10 +184,17 @@ export class MedicalRecordsService {
 
     await this.usersService.findDoctorOrFail(doctorId);
 
-    const { page = 1, limit = 20, sort } = query;
+    const { page = 1, limit = 20, sort, search } = query;
     const qb = this.recordRepository
       .createQueryBuilder('r')
       .where('r.doctorId = :doctorId', { doctorId });
+
+    if (search) {
+      qb.andWhere(
+        '(r.diagnosis LIKE :search OR r.prescription LIKE :search OR r.notes LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
 
     this.applySorting(qb, sort, 'r');
     qb.skip((page - 1) * limit).take(limit);

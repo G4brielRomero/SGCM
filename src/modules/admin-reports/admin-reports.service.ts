@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AdminReportsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly usersService: UsersService,
+  ) {}
 
   async schedules(startDate?: string, endDate?: string) {
     this.validateDateRange(startDate, endDate);
@@ -116,6 +120,7 @@ export class AdminReportsService {
   }
 
   async doctorOccupation(doctorId: number, startDate?: string, endDate?: string) {
+    await this.usersService.findDoctorOrFail(doctorId);
     this.validateDateRange(startDate, endDate);
 
     const qb = this.dataSource

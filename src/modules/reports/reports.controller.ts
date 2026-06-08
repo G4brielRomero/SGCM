@@ -116,11 +116,11 @@ export class ReportsController {
     @CurrentUser() currentUser: UserPayload,
     @Res() res: Response,
   ) {
-    const buffer = await this.reportsService.getPdf(id, currentUser);
+    const { buffer, validationCode } = await this.reportsService.getPdf(id, currentUser);
 
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="laudo-${id}.pdf"`,
+      'Content-Disposition': `attachment; filename="laudo-${validationCode}.pdf"`,
       'Content-Length': buffer.length,
     });
 

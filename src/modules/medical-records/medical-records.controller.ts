@@ -84,15 +84,14 @@ export class MedicalRecordsController {
   }
 
   @Delete(':id')
-  @Roles(UserType.ADMIN)
+  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiParam({ name: 'id', type: Number, example: 1 })
   @ApiOperation({
-    summary: 'Excluir prontuário',
-    description: 'Bloqueado: prontuários são documentos clínicos permanentes e não podem ser excluídos.',
+    summary: 'Excluir prontuário — operação bloqueada',
+    description: 'Prontuários são documentos clínicos permanentes e não podem ser excluídos em nenhuma circunstância.',
   })
-  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode tentar excluir prontuários.', type: ProblemDetailDto })
-  @ApiResponse({ status: 409, description: 'Prontuários não podem ser excluídos.', type: ProblemDetailDto })
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  @ApiResponse({ status: 405, description: 'Prontuários não podem ser excluídos.', type: ProblemDetailDto })
+  remove() {
     this.medicalRecordsService.remove();
   }
 }

@@ -6,9 +6,11 @@
   Param,
   Put,
   Patch,
+  Delete,
   Query,
   HttpCode,
   HttpStatus,
+  MethodNotAllowedException,
   ParseIntPipe,
 } from '@nestjs/common';
 import {
@@ -132,10 +134,10 @@ export class AppointmentsController {
   }
 
   @Get()
-  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
+  @Roles(UserType.ADMIN)
   @ApiOperation({
     summary: 'Listar atendimentos',
-    description: 'ADMIN visualiza todos. DOCTOR visualiza os próprios. PATIENT visualiza os próprios.',
+    description: 'Acesso exclusivo ao ADMIN. Para ver atendimentos próprios use GET /doctors/{id}/appointments ou GET /patients/{id}/appointments.',
   })
   @ApiPaginatedResponse(AppointmentResponseDto, 'Lista paginada de atendimentos.')
   async findAll(
@@ -210,6 +212,18 @@ export class AppointmentsController {
   ) {
     const appointment = await this.appointmentsService.finish(id, currentUser);
     return plainToInstance(AppointmentResponseDto, appointment, { excludeExtraneousValues: true });
+  }
+
+  @Delete(':id')
+  @Roles(UserType.ADMIN)
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiOperation({
+    summary: 'Excluir atendimento — operação bloqueada',
+    description: 'Atendimentos são registros clínicos permanentes e não podem ser excluídos em nenhuma circunstância.',
+  })
+  @ApiResponse({ status: 405, description: 'Atendimentos não podem ser excluídos.', type: ProblemDetailDto })
+  remove() {
+    throw new MethodNotAllowedException('Atendimentos são registros clínicos permanentes e não podem ser excluídos.');
   }
 }
 

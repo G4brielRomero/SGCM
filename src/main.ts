@@ -59,7 +59,7 @@ O endpoint \`GET /reports/validate/{code}\` **não requer autenticação** e pod
 - **Reports** — laudos em PDF para exames encerrados, com código único de validação.
 - **Admin** — relatórios administrativos consolidados (agendamentos, atendimentos, procedimentos e ocupação de agenda).
     `)
-    .setVersion('1.0.0')
+    .setVersion('3.0.0')
     .addTag('Auth', 'Login, refresh de token, logout e perfil do usuário autenticado.')
     .addTag('Users', 'Gestão de usuários do sistema (ADMIN).')
     .addTag('Doctors', 'Perfis de médicos e seus sub-recursos: agendamentos, atendimentos, especialidades, prontuários e laudos.')

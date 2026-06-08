@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
-import { Expose } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
@@ -101,12 +101,14 @@ export class UpdateAppointmentDto {
 export class FindAppointmentsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Filtrar por ID do médico', example: 1 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   doctorId?: number;
 
   @ApiPropertyOptional({ description: 'Filtrar por ID do paciente', example: 2 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   patientId?: number;

@@ -67,8 +67,11 @@ export class PublicReportValidationDto {
   @Expose() @ApiProperty({ description: 'Nome completo do paciente', example: 'João da Silva' })
   patientName: string;
 
-  @Expose() @ApiProperty({ description: 'Nome do médico com CRM', example: 'Dra. Ana Cardoso (CRM 54321-SP)' })
+  @Expose() @ApiProperty({ description: 'Nome do médico', example: 'Dra. Ana Cardoso' })
   doctorName: string;
+
+  @Expose() @ApiPropertyOptional({ description: 'CRM do médico', example: '54321-SP', nullable: true })
+  doctorCrm?: string | null;
 
   @Expose() @ApiProperty({ description: 'Tipo do exame', example: 'hemograma' })
   examType: string;

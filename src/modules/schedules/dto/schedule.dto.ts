@@ -6,9 +6,10 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUrl,
   ValidateIf,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Exclude, Expose, Type } from 'class-transformer';
 import { ScheduleStatus, ScheduleType } from '../entities/schedule.entity';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
@@ -55,12 +56,12 @@ export class CreateScheduleDto {
   unit?: string;
 
   @ApiPropertyOptional({
-    description: 'Link de acesso (obrigatório para ONLINE)',
+    description: 'Link de acesso (obrigatório para ONLINE, deve ser uma URL válida)',
     example: 'https://meet.google.com/abc-def',
   })
   @ValidateIf((o) => o.type === ScheduleType.ONLINE)
   @IsNotEmpty({ message: 'accessLink é obrigatório para agendamentos online' })
-  @IsString()
+  @IsUrl({}, { message: 'accessLink deve ser uma URL válida (ex: https://meet.google.com/abc)' })
   accessLink?: string;
 
   @ApiPropertyOptional({ description: 'Plataforma (obrigatório para ONLINE)', example: 'Google Meet' })
@@ -96,7 +97,7 @@ export class CreateScheduleDto {
   cancellationReason?: string;
 }
 
-export class UpdateScheduleDto extends PartialType(CreateScheduleDto) {}
+export class UpdateScheduleDto extends PartialType(OmitType(CreateScheduleDto, ['type'] as const)) {}
 
 export class UpdateScheduleStatusDto {
   @ApiProperty({

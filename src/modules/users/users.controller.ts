@@ -5,7 +5,7 @@
   Body,
   Param,
   Delete,
-  Put,
+  Patch,
   Query,
   HttpCode,
   HttpStatus,
@@ -89,7 +89,7 @@ export class UsersController {
     return this.serialize(user);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({
@@ -201,10 +201,10 @@ export class PatientsController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles(UserType.ADMIN, UserType.DOCTOR)
+  @Roles(UserType.ADMIN)
   @ApiOperation({
     summary: 'Listar pacientes',
-    description: 'Apenas ADMIN e DOCTOR podem listar pacientes.',
+    description: 'Acesso exclusivo ao ADMIN.',
   })
   @ApiPaginatedResponse(PatientResponseDto, 'Lista paginada de pacientes.')
   async findAll(@Query() query: FindUsersQueryDto) {

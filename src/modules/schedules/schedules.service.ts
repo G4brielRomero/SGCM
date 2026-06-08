@@ -223,12 +223,6 @@ export class SchedulesService {
       );
     }
 
-    if (dto.type && dto.type !== schedule.type) {
-      throw new BadRequestException(
-        'Não é permitido alterar a modalidade do agendamento.',
-      );
-    }
-
     const nextDoctorId = dto.doctorId ?? schedule.doctorId;
     const nextPatientId = dto.patientId ?? schedule.patientId;
     const nextScheduledAt =
@@ -325,6 +319,12 @@ export class SchedulesService {
 
   async remove(id: number): Promise<void> {
     const schedule = await this.findOne(id);
+
+    if (schedule.status === ScheduleStatus.CONFIRMED) {
+      throw new ConflictException(
+        'Agendamento com status CONFIRMED não pode ser excluído. Cancele-o antes de remover.',
+      );
+    }
 
     if (schedule.status === ScheduleStatus.COMPLETED) {
       throw new ConflictException(
