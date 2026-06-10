@@ -28,6 +28,39 @@ enum ScheduleStatus {
   COMPLETED
 }
 
+enum AppointmentType {
+  CONSULTATION
+  EXAM
+  FOLLOW_UP
+}
+
+enum AppointmentStatus {
+  IN_PROGRESS
+  FINISHED
+}
+
+enum ProcedureType {
+  SIMPLE
+  SPECIALIZED
+}
+
+enum ComplexityLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AuthorizationStatus {
+  PENDING
+  AUTHORIZED
+  DENIED
+}
+
+enum ReportStatus {
+  ACTIVE
+  REVOKED
+}
+
 ' ─── Hierarquia de Usuários (STI) ─────────────────────────────────────────────
 
 abstract class User {
@@ -71,6 +104,12 @@ class Specialty {
 
 Doctor "0..*" -- "0..*" Specialty : specialties >
 
+note on link
+  Tabela intermediária
+  <b>doctor_specialties</b>
+  (specialtyId, doctorId)
+end note
+
 ' ─── Hierarquia de Agendamentos (STI) ─────────────────────────────────────────
 
 abstract class Schedule {
@@ -100,22 +139,124 @@ class OnlineSchedule {
 
 class HomeSchedule {
   +fullAddress: string
-  +accessNotes: string
+  +accessNotes: string | null
 }
 
 Schedule <|-- InPersonSchedule
 Schedule <|-- OnlineSchedule
 Schedule <|-- HomeSchedule
 
-' ─── Relacionamentos Schedule → User ──────────────────────────────────────────
-
 Doctor "1" <-- "0..*" Schedule : doctor
 Patient "1" <-- "0..*" Schedule : patient
-
-' ─── Auditoria básica de agendamento ──────────────────────────────────────────
-
 User "0..1" <-- "0..*" Schedule : createdBy
 User "0..1" <-- "0..*" Schedule : cancelledBy
+
+' ─── Hierarquia de Atendimentos (STI) ─────────────────────────────────────────
+
+abstract class Appointment {
+  +id: number
+  +type: AppointmentType
+  +status: AppointmentStatus
+  +scheduleId: number
+  +doctorId: number
+  +patientId: number
+  +notes: string | null
+  +startedAt: Date | null
+  +endedAt: Date | null
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+class Consultation {
+  +reason: string
+  +diagnosticHypothesis: string | null
+}
+
+class Exam {
+  +examType: string
+  +result: string | null
+}
+
+class FollowUp {
+  +clinicalEvolution: string | null
+  +originAppointmentId: number | null
+}
+
+Appointment <|-- Consultation
+Appointment <|-- Exam
+Appointment <|-- FollowUp
+
+Schedule "1" <-- "0..1" Appointment : schedule
+Doctor "1" <-- "0..*" Appointment : doctor
+Patient "1" <-- "0..*" Appointment : patient
+
+' ─── Hierarquia de Procedimentos (STI) ────────────────────────────────────────
+
+abstract class Procedure {
+  +id: number
+  +name: string
+  +description: string
+  +appointmentId: number
+  +type: ProcedureType
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+class SimpleProcedure {
+  +estimatedDuration: number
+}
+
+class SpecializedProcedure {
+  +requiredEquipment: string
+  +complexityLevel: ComplexityLevel
+  +requiresAuthorization: boolean
+  +authorizationStatus: AuthorizationStatus | null
+  +authorizedBy: number | null
+  +authorizedAt: Date | null
+  +deniedReason: string | null
+}
+
+Procedure <|-- SimpleProcedure
+Procedure <|-- SpecializedProcedure
+
+Appointment "1" <-- "0..*" Procedure : appointment
+
+' ─── Prontuário ───────────────────────────────────────────────────────────────
+
+class MedicalRecord {
+  +id: number
+  +appointmentId: number
+  +doctorId: number
+  +patientId: number
+  +diagnosis: string
+  +prescription: string | null
+  +notes: string | null
+  +lastUpdatedBy: number | null
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+Appointment "1" <-- "0..1" MedicalRecord : appointment
+
+' ─── Laudo ────────────────────────────────────────────────────────────────────
+
+class Report {
+  +id: number
+  +appointmentId: number
+  +doctorId: number
+  +patientId: number
+  +validationCode: string
+  +status: ReportStatus
+  +issuedAt: Date
+  +issuedBy: number
+  +revokedAt: Date | null
+  +revokedBy: number | null
+  +revokedReason: string | null
+  +createdAt: Date
+  +updatedAt: Date
+}
+
+Appointment "1" <-- "0..*" Report : appointment
 
 ' ─── Notas ────────────────────────────────────────────────────────────────────
 
@@ -123,12 +264,15 @@ note top of User
   STI — tabela única <b>users</b>
   discriminada pela coluna <b>type</b>.
 
-  Campos sensíveis:
+  Campos sensíveis (<b>#</b>):
   - password
   - refreshToken
   - refreshTokenJti
 
   Esses campos não são expostos nas respostas da API.
+  refreshToken é armazenado como hash bcrypt.
+  refreshTokenJti permite detectar reutilização
+  do refresh token (rotation).
 end note
 
 note top of Schedule
@@ -136,19 +280,39 @@ note top of Schedule
   discriminada pela coluna <b>type</b>.
 
   createdBy e cancelledBy são preenchidos
-  com o usuário autenticado via JWT.
+  com o id do usuário autenticado via JWT.
 end note
 
-note on link
-  Tabela intermediária
-  <b>doctor_specialties</b>
-  (specialtyId, doctorId)
+note top of Appointment
+  STI — tabela única <b>appointments</b>
+  discriminada pela coluna <b>type</b>.
+
+  scheduleId possui restrição UNIQUE:
+  cada agendamento origina no máximo
+  1 atendimento.
 end note
 
-note bottom of User
-  Autenticação:
-  O usuário possui refreshToken e refreshTokenJti
-  para controle de sessão e refresh token rotation.
+note top of Procedure
+  STI — tabela única <b>procedures</b>
+  discriminada pela coluna <b>type</b>.
+end note
+
+note bottom of MedicalRecord
+  appointmentId possui restrição UNIQUE:
+  cada atendimento gera no máximo
+  1 prontuário clínico.
+  Prontuários não podem ser excluídos (405).
+  lastUpdatedBy é preenchido automaticamente
+  com o id do usuário autenticado na atualização.
+end note
+
+note bottom of Report
+  validationCode é UUID único globalmente.
+  Índice parcial <b>uq_active_report_by_appointment</b>:
+  apenas 1 laudo ACTIVE por appointmentId.
+  Laudos não podem ser excluídos — apenas revogados.
+  Endpoint público (sem autenticação):
+  GET /reports/validate/{validationCode}
 end note
 
 @enduml

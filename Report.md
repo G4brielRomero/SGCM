@@ -14,7 +14,7 @@ Gabriel Romero: Criação e implementação do middleware de logging, remoção 
 
 Murilo José Silva: Adicionando comentários para melhor entendimento, correção de conflito em agendamento, validações de dto, serialização e testes. Contribuição/implementação na parte de autenticação. Fix de token e refresh token que estava sendo possivel usar mesmo depois de solicitar um novo token. Atualização parcial do diagrama.
 
-João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorators, implementação de Transform Interceptor e Exception Filter.
+João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorators, implementação de Transform Interceptor e Exception Filter. Produção do relatório etapa 3 
 
 2. Diagrama de classes
 
@@ -52,19 +52,23 @@ Essa separação ajudou a manter o código mais organizado e facilitou o entendi
 4.1 Estratégia de Guards
 Decisão
 
-Optamos por registrar o JwtAuthGuard globalmente via APP_GUARD.
+Optamos por registrar tanto o JwtAuthGuard quanto o RolesGuard globalmente como APP_GUARD no módulo AuthModule (src/modules/auth/auth.module.ts), não em main.ts. Ambos os guards são declarados como providers com a chave especial APP_GUARD do NestJS Core, o que os aplica automaticamente em toda a aplicação antes de qualquer controller ser atingido.
+
+Os decorators relacionados (@Public(), @Roles(), @CurrentUser()) ficam em src/modules/auth/decorators/ e são consumidos pelos guards via Reflector para controle fino por endpoint.
 
 Alternativas consideradas
 
-Aplicar @UseGuards(JwtAuthGuard) manualmente em cada endpoint protegido.
+Aplicar @UseGuards(JwtAuthGuard, RolesGuard) manualmente em cada controller ou endpoint protegido.
 
 Por que escolhemos a abordagem global
 
-Aplicar o guard globalmente reduz o risco de esquecer autenticação em endpoints novos. Assim, todos os endpoints ficam protegidos por padrão e apenas rotas explicitamente marcadas com @Public() escapam da autenticação.
+Registrar os guards globalmente via APP_GUARD reduz o risco de esquecer autenticação em endpoints novos. Todos os endpoints ficam protegidos por padrão — apenas rotas explicitamente marcadas com @Public() escapam da autenticação JWT, e apenas rotas com @Roles() recebem verificação de perfil.
+
+O RolesGuard depende do usuário autenticado já estar presente em request.user. Como o JwtAuthGuard é registrado primeiro no array de providers, o payload JWT já está disponível quando o RolesGuard executa — garantindo a ordem correta de execução.
 
 O que isso muda no sistema
 
-Endpoints como /auth/login e /auth/refresh utilizam @Public(), enquanto o restante da API exige autenticação automaticamente.
+Endpoints como /auth/login e /auth/refresh utilizam @Public(), enquanto o restante da API exige autenticação automaticamente. Endpoints sem @Roles() aceitam qualquer perfil autenticado.
 
 4.2 Estratégia de endpoints públicos com @Public()
 Decisão
@@ -89,14 +93,21 @@ O decorator @Public() adiciona um metadado lido pelo JwtAuthGuard através do Re
 4.3 Campos do Payload JWT
 Decisão
 
-O payload JWT contém apenas:
+O payload JWT contém:
 
-sub
-email
-type
+sub — ID do usuário (padrão JWT para subject)
+email — e-mail do usuário
+type — perfil (ADMIN, DOCTOR ou PATIENT)
+jti — identificador único do token (UUID gerado por randomUUID())
+tokenType — tipo do token: 'access' ou 'refresh'
+
 Por que escolhemos esses campos
 
 O sub identifica o usuário autenticado de forma padronizada. O email facilita logs e auditoria. O type permite que o RolesGuard aplique autorização baseada em perfil sem precisar consultar o banco a cada requisição.
+
+O jti (JWT ID) é fundamental para a segurança do refresh token. Cada par de tokens emitido recebe um jti exclusivo para o refresh token. Ao armazenar o jti no banco junto com o hash do refresh token, o sistema consegue detectar tentativas de reutilização: se o token apresentado tem um jti diferente do registrado no banco, a sessão é invalidada imediatamente — proteção contra ataques de replay com tokens roubados.
+
+O tokenType distingue explicitamente access tokens de refresh tokens no payload. Sem essa claim, a separação dependeria apenas de segredos distintos (JWT_SECRET vs JWT_REFRESH_SECRET). Com tokenType, o JwtAuthGuard rejeita refresh tokens apresentados como access tokens (e vice-versa no endpoint /auth/refresh), adicionando uma camada de defesa independente dos segredos.
 
 Campos excluídos
 
@@ -136,9 +147,11 @@ O decorator retorna o payload do JWT já validado pelo JwtAuthGuard.
 
 Os principais campos utilizados são:
 
-sub
-email
-type
+sub — ID do usuário autenticado (usado para verificação de recurso próprio)
+email — e-mail (disponível para logs e auditoria)
+type — perfil (usado pelo RolesGuard e pelas verificações de acesso nos services)
+jti — identificador único do token (usado na validação de refresh token)
+tokenType — tipo do token ('access' ou 'refresh')
 
 Optamos por retornar apenas o payload JWT ao invés do usuário completo do banco para evitar consultas desnecessárias em todas as requisições e manter melhor performance.
 
@@ -587,26 +600,318 @@ Por que escolhemos STI
 
 Isso permite consultas polimórficas simples e mantém o código mais organizado utilizando @ChildEntity.
 
+4.26 Política de Atualização de Prontuários (Etapa 3)
+Decisão
+
+Apenas os campos prescription e notes podem ser alterados após a criação de um prontuário. O campo diagnosis é imutável.
+
+Campos imutáveis após criação
+
+diagnosis: representa o diagnóstico clínico firmado no momento do encerramento do atendimento. Permitir alteração posterior comprometeria a integridade do registro clínico e poderia mascarar erros médicos.
+appointmentId, doctorId, patientId: identificadores de vínculo — não fazem sentido mudar após a criação.
+lastUpdatedBy: preenchido automaticamente pelo sistema com o id do usuário autenticado que realizou a última atualização. Nunca recebido do cliente.
+
+Campos mutáveis
+
+prescription: prescrição médica, que pode ser ajustada conforme a evolução do tratamento.
+notes: observações clínicas complementares, que podem ser complementadas ao longo do acompanhamento.
+
+Como isso é garantido no código
+
+O UpdateMedicalRecordDto contém apenas prescription e notes. Com forbidNonWhitelisted: true no pipe global, qualquer tentativa de enviar diagnosis, appointmentId, doctorId, patientId ou lastUpdatedBy no body de atualização é rejeitada com 400 Bad Request antes de chegar ao service.
+
+Controle por perfil e por recurso
+
+Apenas ADMIN e DOCTOR podem atualizar prontuários (PUT /records/:id). PATIENT não possui acesso a esse endpoint.
+DOCTOR só pode atualizar prontuários de seus próprios atendimentos — o service verifica record.doctorId === currentUser.sub antes de persistir qualquer alteração, retornando 403 Forbidden caso o prontuário pertença a outro médico.
+
+4.26 Single Table Inheritance (STI) para Atendimentos (Etapa 3)
+Decisão
+
+Optamos por STI com a tabela appointments e coluna type para os três subtipos:
+
+CONSULTATION
+EXAM
+FOLLOW_UP
+Alternativas consideradas
+
+A alternativa seria Class Table Inheritance (CTI), com tabelas separadas consultations, exams e follow_ups além da tabela base appointments.
+
+Por que escolhemos STI
+
+O perfil de consultas do domínio favorece fortemente o acesso polimórfico: listagens de atendimentos de um médico ou paciente precisam retornar os três subtipos em uma única query ordenada por data. Com CTI, essas listagens exigiriam UNION ou múltiplos JOINs, aumentando a complexidade das queries sem benefício real.
+
+Os campos exclusivos de cada subtipo são poucos e bem delimitados:
+
+CONSULTATION adiciona apenas reason e diagnosticHypothesis;
+EXAM adiciona examType e result;
+FOLLOW_UP adiciona originAppointmentId e clinicalEvolution.
+
+A esparsidade é baixa — a maioria dos registros preenche ao menos um campo específico do subtipo — tornando os NULLs da STI aceitáveis.
+
+A coluna type já é exigida como discriminador pelo domínio (usada em regras de negócio como "laudos só para EXAM"), eliminando qualquer overhead conceitual.
+
+O que isso muda no sistema
+
+Todas as queries de atendimento operam sobre uma única tabela appointments, incluindo filtros por médico, paciente, status e tipo. O TypeORM lida com a discriminação automaticamente via @ChildEntity, permitindo instanciar o subtipo correto sem lógica adicional no código.
+
+4.27 Single Table Inheritance (STI) para Procedimentos (Etapa 3)
+Decisão
+
+Optamos por STI com a tabela procedures e coluna type para os dois subtipos:
+
+SIMPLE
+SPECIALIZED
+Alternativas consideradas
+
+A alternativa seria CTI, com tabelas simple_procedures e specialized_procedures além da tabela base procedures.
+
+Por que escolhemos STI
+
+O perfil de consultas dominante é a listagem de todos os procedimentos de um atendimento, independente do subtipo. Com CTI, essa query exigiria UNION entre as duas tabelas filhas, complicando tanto a implementação quanto a paginação.
+
+O subconjunto de campos exclusivos do SPECIALIZED (requiredEquipment, complexityLevel, requiresAuthorization, authorizationStatus, authorizedBy, authorizedAt, deniedReason) permanece como NULL para registros SIMPLE, o que é aceitável dado que procedimentos SIMPLE tendem a ser maioria e a esparsidade total da tabela continua controlada.
+
+A STI também simplifica o ciclo de autorização: a query de relatório administrativo que agrega authorizationStatus por tipo precisa filtrar apenas p.type = 'SPECIALIZED' na mesma tabela, sem JOIN adicional.
+
+O que isso muda no sistema
+
+Listagens por atendimento, filtros por authorizationStatus e agregações administrativas operam sobre uma única tabela procedures. O TypeORM instancia automaticamente SimpleProcedure ou SpecializedProcedure conforme o valor da coluna type, sem lógica de despacho manual nos services.
+
+4.28 Adaptação da Infraestrutura para Novos Tipos de Resposta (Etapa 3)
+Decisão
+
+Mantivemos o TransformInterceptor e o LoggingMiddleware globais, validando e ajustando o comportamento para arquivos binários (PDF) e rotas públicas de validação.
+
+Caso de Borda: PDF vs TransformInterceptor
+
+O TransformInterceptor foi projetado para padronizar respostas JSON no formato { data, meta }. No endpoint de download de laudo (GET /reports/:id/pdf), optamos por injetar o objeto de resposta do Express via @Res(). Ao assumir o controle manual da resposta (res.end(buffer)), o NestJS desativa o processamento automático do valor de retorno para este endpoint. Isso garante que o interceptor não tente encapsular o buffer binário em um JSON, o que corromperia o PDF.
+
+Logging de Arquivos
+
+Validamos que o LoggingMiddleware registra corretamente o tempo de processamento e o status das requisições de download. Como o middleware monitora o evento finish do objeto response, ele captura com precisão o momento em que o streaming do arquivo foi concluído, independente do tipo de conteúdo (JSON ou binário).
+
+Validação Pública
+
+A infraestrutura de autenticação (JwtAuthGuard) já suportava a estratégia opt-out via @Public(). O endpoint /reports/validate/:code foi integrado utilizando este decorator, permitindo que a validação pública funcione sem exigir tokens, mantendo a consistência com a estratégia de segurança definida na Etapa 2.
+
+4.29 Filtros Dinâmicos e Reutilizáveis
+Decisão
+
+Para os endpoints de listagem da Etapa 3 (procedimentos, laudos, relatórios), adotamos o uso de DTOs de Query combinados com o QueryBuilder do TypeORM nos services.
+
+Por que escolhemos isso
+
+Diferente das listagens simples da Etapa 1, os novos endpoints exigem combinações complexas de filtros (ex: filtrar procedimentos por tipo E status de autorização). O QueryBuilder permite construir a cláusula WHERE condicionalmente (if (dto.status) query.andWhere(...)), o que produz um código mais legível e performático do que tentar manipular objetos literais de critérios do TypeORM. Essa abordagem centraliza a lógica de filtragem no Service, mantendo o Controller limpo e focado apenas no mapeamento do DTO.
+
+4.30 Evolução na Estratégia de DTOs de Hierarquia
+Reflexão
+
+Na Etapa 1, para a hierarquia de Schedule, utilizamos um DTO mais genérico com campos opcionais. Aprendemos que isso dificultava a documentação no Swagger, pois não ficava claro quais campos eram obrigatórios para cada modalidade (ex: HOME vs ONLINE).
+
+Na Etapa 3, para Appointment e Procedure, evoluímos para uma estratégia de DTOs com discriminadores no Swagger (usando oneOf e discriminator). Embora no TypeScript a validação ainda dependa de decorators como @ValidateIf, a documentação agora reflete exatamente o que cada subtipo espera. Essa maturidade arquitetural melhorou a comunicação com quem consome a API e tornou a validação mais rigorosa.
+
+4.31 Integridade de Dados Clínicos e Operações Irreversíveis
+Identificação de Riscos
+
+Identificamos que as operações de encerramento de atendimento (PATCH /appointments/:id/finish), emissão de laudo (POST /report) e revogação de laudo (PATCH /revoke) possuem alto potencial de comprometer a integridade clínica por serem irreversíveis.
+
+Medidas de Proteção
+
+- Validação de Estado: O sistema impede a emissão de laudos para exames que não estejam FINISHED.
+- Imutabilidade: Uma vez encerrado o atendimento, campos como diagnosis em prontuários tornam-se imutáveis via DTO de atualização.
+- Concorrência: Utilizamos verificações no Service para garantir que um atendimento não seja encerrado duas vezes simultaneamente.
+- Procedimentos Pendentes: Decidimos que o encerramento de um atendimento não bloqueia se houver procedimentos PENDING ou DENIED. Clinicamente, um médico pode encerrar a consulta mesmo que um exame tenha sido negado pelo convênio, mas o sistema registra esse histórico como parte da evolução clínica.
+
+4.32 Escolha da Estratégia de Herança (STI) para Atendimentos e Procedimentos
+Decisão
+
+Mantivemos a estratégia de Single Table Inheritance (STI) para Appointment e Procedure.
+
+Justificativa Técnica
+
+O perfil de consultas dominante é polimórfico: quase sempre buscamos "todos os atendimentos do paciente X" ou "todos os procedimentos do atendimento Y". A STI é extremamente eficiente para isso no SQLite, pois evita JOINs ou UNIONs.
+No caso do FollowUp, a validação do originAppointmentId é feita no Service, garantindo que o atendimento de origem pertença ao mesmo paciente e não seja o próprio registro, retornando 400 Bad Request se a regra de negócio for violada (pois o ID existe, mas o vínculo é inválido).
+
+4.33 Modelagem do Campo result em Exames
+Decisão
+
+O campo result é opcional no banco de dados (permitindo NULL), mas validado obrigatoriamente no Service antes da emissão de qualquer laudo.
+
+Justificativa
+
+Um exame pode ser criado e até encerrado enquanto o laboratório processa o resultado. Permitir o NULL no banco reflete essa realidade temporal. No entanto, o ReportsService bloqueia a geração do PDF se o result estiver vazio, garantindo que nenhum laudo oficial saia sem conteúdo técnico.
+
+4.34 Exposição de authorizedBy (ID vs Referência)
+Decisão
+
+Em procedimentos especializados, o campo authorizedBy retorna tanto o ID quanto o nome do administrador nas respostas da API.
+
+Por que escolhemos isso
+
+Para o contexto clínico e auditoria, apenas o ID é insuficiente para uma leitura rápida. Realizamos um leftJoin no QueryBuilder para trazer o nome do Admin, mantendo a eficiência da consulta sem expor dados sensíveis do administrador, respeitando a serialização do UserResponseDto.
+
+4.35 Um Schedule pode ter mais de um Appointment?
+Decisão
+
+Não. O sistema impõe uma relação 1:1 estrita. Se houver uma tentativa de criar um segundo Appointment para o mesmo scheduleId, o service lança um 409 Conflict. Caso um atendimento seja excluído (o que evitamos via 405 em registros clínicos), o agendamento voltaria a ficar disponível, mas preferimos a integridade de manter o vínculo histórico.
+
+4.36 Reflexão Final: Padrão de Herança para Projetos Futuros
+
+Após implementar quatro hierarquias (User, Schedule, Appointment, Procedure) com STI no TypeORM/SQLite, nossa recomendação é:
+
+1. Use STI (Single Table) como padrão para sistemas onde a maioria das consultas é polimórfica (listagens gerais) e os subtipos não divergem massivamente em número de campos. É mais simples de manter e mais performático no SQLite.
+2. Use CTI (Joined Table) apenas se os subtipos forem entidades muito distintas, com muitos campos exclusivos que causariam uma tabela esparsa demais (excesso de NULLs), ou se houver necessidade de integridade referencial estrita em nível de banco de dados para campos específicos dos subtipos.
+
+No SGCM, a STI provou ser a escolha correta pela coesão dos dados clínicos.
+
+4.37 Gestão de Autorização e Ciclo de Vida de Procedimentos
+Decisão
+
+O endpoint PATCH /procedures/:id/authorization utiliza um campo action com os valores AUTHORIZE ou DENY. Para negações, o campo deniedReason é obrigatório no DTO. 
+
+Justificativa
+
+Optamos por um único endpoint com action em vez de rotas separadas para simplificar o controle de estado no frontend. A obrigatoriedade do motivo da negação é uma regra de negócio crítica para que o médico solicitante possa ajustar a conduta clínica ou contestar a decisão administrativa. Além disso, reforçamos que procedimentos só podem ser atualizados ou removidos enquanto o atendimento está IN_PROGRESS; uma vez finalizado, o registro torna-se parte do prontuário histórico e imutável.
+
+4.38 Prontuários: Criação, Imutabilidade e Rastreabilidade
+Decisão
+
+Os prontuários são criados manualmente pelo médico via POST /appointments/:id/records após o encerramento do atendimento.
+
+Justificativa
+
+Embora a criação automática garantisse a existência do registro, a criação manual permite que o médico refine a evolução clínica e a prescrição antes de gerar o documento final. Para garantir a integridade, o campo diagnosis é imutável após a criação, enquanto prescription e notes podem ser atualizados. 
+Implementamos o status 405 Method Not Allowed para tentativas de DELETE /records/:id, comunicando explicitamente que registros clínicos são permanentes. A rastreabilidade é garantida pelos campos createdBy (derivado do atendimento) e lastUpdatedBy (armazenado explicitamente a cada alteração, mesmo que o editor seja o mesmo criador), assegurando uma trilha de auditoria completa.
+
+4.39 Estratégia de Laudos: Validação Pública e Segurança do PDF
+Decisão
+
+O endpoint de validação pública retorna o status e os dados básicos do laudo. Para laudos REVOKED, retornamos explicitamente o status e o motivo da revogação, mas ocultamos o result clínico para proteger a privacidade do paciente em um endpoint sem autenticação.
+
+Segurança e Acesso
+
+O acesso ao PDF via GET /reports/:id/pdf exige validação de ownership: um paciente só acessa seus laudos, e um médico só acessa o que emitiu. Mesmo laudos revogados permanecem acessíveis para consulta histórica dos envolvidos, mas com uma marca d'água visual (ou aviso no cabeçalho) gerada pelo PdfService.
+
+Roteamento
+
+Para evitar conflitos de roteamento no NestJS, a rota estática reports/validate/:code foi declarada antes da rota parametrizada reports/:id, garantindo que a string "validate" não seja interpretada como um ID numérico.
+
+4.40 Relatórios Administrativos e Taxa de Ocupação
+Decisão
+
+Os relatórios administrativos utilizam queries SQL via QueryBuilder com GROUP BY e COUNT, delegando o processamento pesado ao banco de dados. 
+
+Estrutura de Resposta
+
+As respostas são encapsuladas no envelope { data, meta }, onde data utiliza o formato de objeto com chaves dinâmicas (ex: {"PENDING": 10, "AUTHORIZED": 5}) por ser mais compacto para consumo em dashboards de resumo.
+
+Métrica de Ocupação
+
+Definimos a taxa de ocupação como: (CONFIRMED + COMPLETED) / (TOTAL_AGENDADOS - CANCELLED). Ignoramos cancelamentos para refletir a ocupação real do tempo que o médico dedicou ou dedicará efetivamente à clínica.
+
+4.41 Arquitetura do PdfService e Tratamento de Falhas
+Decisão
+
+O PdfService recebe um LaudoPdfDto consolidado em vez da entidade completa.
+
+Justificativa
+
+Isso reduz o acoplamento entre o módulo de persistência e o de geração de documentos. Caso a biblioteca de PDF (pdfkit) falhe, o erro é capturado e mapeado para o HttpExceptionFilter, retornando um erro 500 Internal Server Error no padrão RFC 7807, ocultando detalhes técnicos da biblioteca mas informando que a geração do documento falhou. 
+Atualmente, o PDF contém o validationCode em texto; a inclusão de um QR Code foi avaliada como uma melhoria futura de usabilidade, pendente da adição da biblioteca qrcode.
+
+4.42 Organização de Pré-condições e Transações
+Decisão
+
+As validações de pré-condição (ex: atendimento é EXAM? está FINISHED?) são organizadas em métodos privados auxiliares dentro dos Services (ex: validateIssueReportPreConditions).
+
+Transações
+
+Identificamos que o encerramento de atendimento e a emissão de laudo são operações críticas. Utilizamos EntityManager.transaction para garantir que, se a geração do laudo falhar, o status do atendimento não seja alterado indevidamente, mantendo a consistência do estado clínico.
+
+4.43 Retrospectiva e Evolução do Projeto
+Reflexão Final
+
+Ao longo das três etapas, a maior lição foi sobre a rigidez necessária em sistemas clínicos. Decisões da Etapa 1, como o uso de IDs simples, facilitaram o início, mas exigiram guards robustos na Etapa 3 para garantir a privacidade (Ownership).
+
+Se recomeçássemos, adotaríamos UUIDs como chaves primárias públicas desde o início para evitar a enumeração de recursos. A política de documentação "Swagger-First" foi mantida com sucesso, e os exemplos no Swagger foram sincronizados com os dados do seed para permitir testes reais imediatos. O README.md foi revisado para incluir todas as novas variáveis de ambiente e instruções para o endpoint público de validação.
+
 5. Tabela de Controle de Acesso por Recurso
+
 Método	Endpoint	ADMIN	DOCTOR	PATIENT	Restrição
-POST	/auth/login	✓	✓	✓	Público
-POST	/auth/refresh	✓	✓	✓	Público
+— Auth —
+POST	/auth/login	✓	✓	✓	Público (sem autenticação)
+POST	/auth/refresh	✓	✓	✓	Público (sem autenticação)
 POST	/auth/logout	✓	✓	✓	Invalida apenas o próprio token
 GET	/auth/me	✓	✓	✓	Retorna apenas o usuário autenticado
-POST	/users	✓	✗	✗	Administrativo
-GET	/users	✓	✗	✗	Administrativo
-GET	/users/:id	✓	✓	✓	Próprio recurso
-PUT	/users/:id	✓	✓	✓	Próprio recurso
-DELETE	/users/:id	✓	✗	✗	Administrativo
+— Users —
+POST	/users	✓	✗	✗	Apenas ADMIN
+GET	/users	✓	✗	✗	Apenas ADMIN
+GET	/users/:id	✓	✓	✓	DOCTOR e PATIENT acessam apenas o próprio
+PATCH	/users/:id	✓	✓	✓	DOCTOR e PATIENT atualizam apenas o próprio
+DELETE	/users/:id	✓	✗	✗	Inativação lógica; apenas ADMIN
+— Doctors / Patients —
 GET	/doctors	✓	✓	✓	Nenhuma
 GET	/doctors/:id	✓	✓	✓	Nenhuma
-GET	/patients	✓	✓	✗	Nenhuma
-GET	/patients/:id	✓	✓	✓	Próprio recurso
-POST	/schedules	✓	✗	✓	Patient cria apenas para si
-GET	/schedules	✓	✓	✓	Ownership validado no service
+GET	/patients	✓	✗	✗	Apenas ADMIN
+GET	/patients/:id	✓	✓	✓	PATIENT acessa apenas o próprio
+— Specialties —
+POST	/specialties	✓	✗	✗	Apenas ADMIN
+GET	/specialties	✓	✓	✓	Nenhuma
+GET	/specialties/:id	✓	✓	✓	Nenhuma
+PUT	/specialties/:id	✓	✗	✗	Apenas ADMIN
+DELETE	/specialties/:id	✓	✗	✗	Apenas ADMIN; bloqueado se houver médicos vinculados
+GET	/specialties/:id/doctors	✓	✓	✓	Nenhuma
+GET	/doctors/:id/specialties	✓	✓	✓	Nenhuma
+POST	/doctors/:id/specialties	✓	✗	✗	Apenas ADMIN
+DELETE	/doctors/:id/specialties/:specialtyId	✓	✗	✗	Apenas ADMIN
+— Schedules —
+POST	/schedules	✓	✗	✓	PATIENT cria apenas para si mesmo
+GET	/schedules	✓	✗	✗	Apenas ADMIN; para ver os próprios usar sub-rotas
 GET	/schedules/:id	✓	✓	✓	Ownership validado no service
-PATCH	/schedules/:id/status	✓	✓	✓	Ownership validado no service
-DELETE	/schedules/:id	✓	✗	✗	Administrativo
+PATCH	/schedules/:id	✓	✗	✗	Apenas ADMIN; campo type imutável
+PATCH	/schedules/:id/status	✓	✓	✓	DOCTOR: próprios; PATIENT: só cancela os próprios
+DELETE	/schedules/:id	✓	✗	✗	Apenas ADMIN; bloqueado se CONFIRMED ou COMPLETED
+GET	/doctors/:id/schedules	✓	✓	✗	DOCTOR acessa apenas os próprios
+GET	/patients/:id/schedules	✓	✗	✓	PATIENT acessa apenas os próprios
+— Appointments —
+POST	/appointments	✓	✓	✗	DOCTOR cria apenas em agendamentos próprios
+GET	/appointments	✓	✗	✗	Apenas ADMIN; para ver os próprios usar sub-rotas
+GET	/appointments/:id	✓	✓	✓	Ownership validado no service
+PUT	/appointments/:id	✓	✓	✗	Ownership; apenas atendimentos IN_PROGRESS
+PATCH	/appointments/:id/finish	✓	✓	✗	Ownership; transição IN_PROGRESS → FINISHED
+DELETE	/appointments/:id	✓	✗	✗	Bloqueado (405) — registros clínicos permanentes
+GET	/doctors/:id/appointments	✓	✓	✗	DOCTOR acessa apenas os próprios
+GET	/patients/:id/appointments	✓	✗	✓	PATIENT acessa apenas os próprios
+— Procedures —
+POST	/appointments/:id/procedures	✓	✓	✗	Ownership; atendimento deve estar IN_PROGRESS
+GET	/appointments/:id/procedures	✓	✓	✓	Ownership validado no service
+GET	/procedures/:id	✓	✓	✓	Ownership validado no service
+PUT	/procedures/:id	✓	✓	✗	Ownership; atendimento deve estar IN_PROGRESS
+PATCH	/procedures/:id/authorization	✓	✗	✗	Apenas ADMIN; apenas SPECIALIZED PENDING
+DELETE	/procedures/:id	✓	✓	✗	Ownership; atendimento deve estar IN_PROGRESS
+— Medical Records —
+POST	/appointments/:id/records	✓	✓	✗	Ownership; atendimento deve estar FINISHED; 1 por atendimento
+GET	/appointments/:id/records	✓	✓	✓	Ownership validado no service
+GET	/records/:id	✓	✓	✓	Ownership validado no service
+PUT	/records/:id	✓	✓	✗	DOCTOR só atualiza os próprios; diagnosis imutável
+DELETE	/records/:id	✓	✓	✓	Bloqueado (405) — documentos clínicos permanentes
+GET	/patients/:id/records	✓	✓	✓	PATIENT acessa apenas os próprios
+GET	/doctors/:id/records	✓	✓	✗	DOCTOR acessa apenas os próprios
+— Reports (Laudos) —
+POST	/appointments/:id/report	✓	✓	✗	Ownership; apenas EXAM FINISHED com result preenchido
+GET	/reports/validate/:code	✓	✓	✓	Público (sem autenticação)
+GET	/reports/:id	✓	✓	✓	Ownership validado no service
+GET	/reports/:id/pdf	✓	✓	✓	Ownership; retorna PDF (não passa pelo TransformInterceptor)
+PATCH	/reports/:id/revoke	✓	✓	✗	Ownership; apenas laudos ACTIVE; irreversível
+GET	/patients/:id/reports	✓	✓	✓	PATIENT acessa apenas os próprios
+GET	/doctors/:id/reports	✓	✓	✗	DOCTOR acessa apenas os próprios
+— Admin Reports —
+GET	/admin/reports/schedules	✓	✗	✗	Apenas ADMIN; filtros de período opcionais
+GET	/admin/reports/appointments	✓	✗	✗	Apenas ADMIN; filtros de período e médico
+GET	/admin/reports/procedures	✓	✗	✗	Apenas ADMIN; filtros de período opcionais
+GET	/admin/reports/doctors/:id/occupation	✓	✗	✗	Apenas ADMIN; taxa de ocupação do médico no período
+
 5.1 Reflexão sobre a tabela de permissões
 
 Durante a definição da tabela de permissões também discutimos quais informações deveriam ser acessíveis entre diferentes perfis do sistema.

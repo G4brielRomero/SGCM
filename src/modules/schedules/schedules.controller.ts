@@ -1,11 +1,10 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
   Body,
   Param,
   Delete,
-  Put,
   Patch,
   Query,
   HttpCode,
@@ -35,7 +34,7 @@ import { UserPayload } from '../auth/types/user-payload.interface';
 import { UserType } from '../users/entities/user.entity';
 import { ApiEnvelopeResponse, ApiPaginatedResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Schedules')
 @ApiUnauthorizedResponse()
 @Controller('schedules')
@@ -66,10 +65,10 @@ export class SchedulesController {
   }
 
   @Get()
-  @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
+  @Roles(UserType.ADMIN)
   @ApiOperation({
     summary: 'Listar agendamentos',
-    description: 'ADMIN visualiza todos. DOCTOR visualiza os próprios. PATIENT visualiza os próprios.',
+    description: 'Acesso exclusivo ao ADMIN. Para ver agendamentos próprios use GET /doctors/{id}/schedules ou GET /patients/{id}/schedules.',
   })
   @ApiPaginatedResponse(ScheduleResponseDto, 'Lista paginada de agendamentos.')
   async findAll(
@@ -109,15 +108,16 @@ export class SchedulesController {
     });
   }
 
-  @Put(':id')
+  @Patch(':id')
   @Roles(UserType.ADMIN)
   @ApiParam({ name: 'id', example: 1 })
   @ApiOperation({
     summary: 'Atualizar agendamento',
-    description: 'Apenas ADMIN pode atualizar dados do agendamento.',
+    description: 'Apenas ADMIN pode atualizar dados do agendamento. O campo `type` (modalidade) não pode ser alterado após a criação.',
   })
   @ApiEnvelopeResponse(ScheduleResponseDto, 200, 'Agendamento atualizado.')
-  @ApiResponse({ status: 400, description: 'Dados inválidos ou modalidade alterada.', type: ProblemDetailDto })
+  @ApiResponse({ status: 400, description: 'Dados inválidos ou campo `type` presente no body.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode atualizar agendamentos.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -162,14 +162,15 @@ export class SchedulesController {
     description: 'Apenas ADMIN pode excluir agendamentos.',
   })
   @ApiResponse({ status: 204, description: 'Agendamento excluído com sucesso.' })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode excluir agendamentos.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Agendamento não encontrado.', type: ProblemDetailDto })
-  @ApiResponse({ status: 409, description: 'Agendamento COMPLETED não pode ser excluído.', type: ProblemDetailDto })
+  @ApiResponse({ status: 409, description: 'Agendamento CONFIRMED ou COMPLETED não pode ser excluído.', type: ProblemDetailDto })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.schedulesService.remove(id);
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @ApiUnauthorizedResponse()
 @Controller('doctors/:doctorId/schedules')
@@ -204,7 +205,7 @@ export class DoctorSchedulesController {
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Patients')
 @ApiUnauthorizedResponse()
 @Controller('patients/:patientId/schedules')

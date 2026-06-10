@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -29,7 +29,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserType } from '../users/entities/user.entity';
 import { ApiEnvelopeResponse, ApiPaginatedResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Specialties')
 @ApiUnauthorizedResponse()
 @Controller('specialties')
@@ -45,6 +45,7 @@ export class SpecialtiesController {
   })
   @ApiEnvelopeResponse(SpecialtyResponseDto, 201, 'Especialidade criada.')
   @ApiResponse({ status: 400, description: 'Dados inválidos.', type: ProblemDetailDto })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode criar especialidades.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Nome já cadastrado.', type: ProblemDetailDto })
   async create(@Body() dto: CreateSpecialtyDto) {
     const s = await this.specialtiesService.create(dto);
@@ -99,6 +100,7 @@ export class SpecialtiesController {
     description: 'Apenas ADMIN pode atualizar especialidades.',
   })
   @ApiEnvelopeResponse(SpecialtyResponseDto, 200, 'Especialidade atualizada.')
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode atualizar especialidades.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Especialidade não encontrada.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Nome já em uso.', type: ProblemDetailDto })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSpecialtyDto) {
@@ -118,6 +120,7 @@ export class SpecialtiesController {
     description: 'Apenas ADMIN pode excluir especialidades.',
   })
   @ApiResponse({ status: 204, description: 'Especialidade excluída com sucesso.' })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode excluir especialidades.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Especialidade não encontrada.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Especialidade possui médicos associados.', type: ProblemDetailDto })
   async remove(@Param('id', ParseIntPipe) id: number) {
@@ -147,7 +150,7 @@ export class SpecialtiesController {
   }
 }
 
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @ApiUnauthorizedResponse()
 @Controller('doctors/:doctorId/specialties')
@@ -183,7 +186,21 @@ export class DoctorSpecialtiesController {
     summary: 'Associar especialidade a um médico',
     description: 'Apenas ADMIN pode associar especialidades a médicos.',
   })
-  @ApiResponse({ status: 200, description: 'Especialidade associada com sucesso.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Especialidade associada com sucesso.',
+    content: {
+      'application/json': {
+        schema: {
+          example: {
+            data: { message: 'Especialidade associada com sucesso.' },
+            meta: { timestamp: '2026-06-07T09:00:00.000Z', path: '/doctors/1/specialties' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode associar especialidades a médicos.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Médico ou especialidade não encontrado.', type: ProblemDetailDto })
   @ApiResponse({ status: 409, description: 'Médico já possui a especialidade.', type: ProblemDetailDto })
   async associate(
@@ -205,6 +222,7 @@ export class DoctorSpecialtiesController {
     description: 'Apenas ADMIN pode desassociar especialidades de médicos.',
   })
   @ApiResponse({ status: 204, description: 'Especialidade desassociada com sucesso.' })
+  @ApiResponse({ status: 403, description: 'Apenas ADMIN pode desassociar especialidades de médicos.', type: ProblemDetailDto })
   @ApiResponse({ status: 404, description: 'Médico ou especialidade não encontrado.', type: ProblemDetailDto })
   async dissociate(
     @Param('doctorId', ParseIntPipe) doctorId: number,

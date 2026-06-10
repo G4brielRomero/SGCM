@@ -4,13 +4,13 @@ import { IsCpf } from '../../../common/decorators/is-cpf.decorator';
 
 // type não pode ser alterado após o cadastro (paciente não vira médico)
 export class UpdateUserDto {
-  @ApiPropertyOptional({ example: 'Rafael Mendes Atualizado' })
+  @ApiPropertyOptional({ example: 'Rafael Mendes Silva' })
   @IsOptional()
   @IsNotEmpty({ message: 'Nome não pode ser vazio' })
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional({ example: 'novo@email.com' })
+  @ApiPropertyOptional({ example: 'rafael.silva@clinica.com' })
   @IsOptional()
   @IsEmail({}, { message: 'E-mail deve ter formato válido' })
   email?: string;

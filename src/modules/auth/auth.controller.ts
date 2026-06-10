@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Get,
@@ -13,6 +13,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
+import { ProblemDetailDto } from '../../common/dto/problem-detail.dto';
 import { AuthService } from './auth.service';
 import { ApiEnvelopeResponse, ApiUnauthorizedResponse } from '../../common/decorators/api-responses.decorator';
 import { LoginDto, RefreshTokenDto, AuthResponseDto } from './dto/auth.dto';
@@ -40,6 +41,8 @@ export class AuthController {
     description: 'Autentica o usuário e retorna dois tokens: `accessToken` (válido por 15 minutos) e `refreshToken` (válido por 7 dias). Use o `accessToken` no cabeçalho `Authorization: Bearer {accessToken}` para acessar os endpoints protegidos. Quando o `accessToken` expirar, use o `refreshToken` em `POST /auth/refresh` para obter um novo par de tokens.',
   })
   @ApiEnvelopeResponse(AuthResponseDto, 200, 'Login realizado com sucesso.')
+  @ApiResponse({ status: 400, description: 'E-mail ou senha ausente ou com formato inválido.', type: ProblemDetailDto })
+  @ApiResponse({ status: 401, description: 'Credenciais inválidas — e-mail não cadastrado ou senha incorreta.', type: ProblemDetailDto })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -52,25 +55,57 @@ export class AuthController {
     description: 'Emite um novo par de tokens (`accessToken` e `refreshToken`) a partir de um `refreshToken` válido. O refresh token é de uso único — após ser utilizado, é imediatamente invalidado e substituído pelo novo. Tentativas de reutilizar o mesmo refresh token retornam 401 e invalidam a sessão por completo.',
   })
   @ApiEnvelopeResponse(AuthResponseDto, 200, 'Tokens renovados com sucesso.')
+  @ApiResponse({ status: 400, description: 'refreshToken ausente ou com formato inválido.', type: ProblemDetailDto })
+  @ApiResponse({ status: 401, description: 'Refresh token inválido, expirado ou já utilizado. Faça login novamente.', type: ProblemDetailDto })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto.refreshToken);
   }
 
   @Post('logout')
   @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Realizar logout' })
+  @ApiOperation({
+    summary: 'Realizar logout',
+    description: 'Invalida o `refreshToken` da sessão atual. O `accessToken` em uso expira naturalmente em 15 minutos — novos tokens não poderão ser emitidos após o logout.',
+  })
   @ApiUnauthorizedResponse()
+  @ApiResponse({ status: 204, description: 'Logout realizado com sucesso. Sessão invalidada.' })
   async logout(@CurrentUser() user: UserPayload) {
     await this.authService.logout(user);
   }
 
   @Get('me')
   @Roles(UserType.ADMIN, UserType.DOCTOR, UserType.PATIENT)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Retornar usuário autenticado' })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Retornar usuário autenticado',
+    description: 'Retorna o perfil completo do usuário dono do token. O schema varia por perfil: DOCTOR inclui `crm`; PATIENT inclui `cpf` e `birthDate`; ADMIN retorna apenas os campos base.',
+  })
   @ApiUnauthorizedResponse()
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil do usuário autenticado.',
+    content: {
+      'application/json': {
+        schema: {
+          example: {
+            data: {
+              id: 1,
+              name: 'Rafael Mendes',
+              email: 'rafael@clinica.com',
+              type: 'DOCTOR',
+              crm: '12345-SP',
+              isActive: true,
+              createdAt: '2026-01-01T10:00:00.000Z',
+              specialties: [{ id: 1, name: 'Cardiologia' }],
+            },
+            meta: { timestamp: '2026-06-07T09:00:00.000Z', path: '/auth/me' },
+          },
+        },
+      },
+    },
+  })
   async me(@CurrentUser() user: UserPayload) {
     const currentUser = await this.authService.me(user);
 
