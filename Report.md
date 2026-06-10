@@ -14,7 +14,7 @@ Gabriel Romero: Criação e implementação do middleware de logging, remoção 
 
 Murilo José Silva: Adicionando comentários para melhor entendimento, correção de conflito em agendamento, validações de dto, serialização e testes. Contribuição/implementação na parte de autenticação. Fix de token e refresh token que estava sendo possivel usar mesmo depois de solicitar um novo token. Atualização parcial do diagrama.
 
-João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorators, implementação de Transform Interceptor e Exception Filter.
+João Pedro Martin Turina: Testes e correções de funcionamento das requisições e endpoints, adição de decorators, implementação de Transform Interceptor e Exception Filter. Produção do relatório etapa 3 
 
 2. Diagrama de classes
 
@@ -677,6 +677,164 @@ A STI também simplifica o ciclo de autorização: a query de relatório adminis
 O que isso muda no sistema
 
 Listagens por atendimento, filtros por authorizationStatus e agregações administrativas operam sobre uma única tabela procedures. O TypeORM instancia automaticamente SimpleProcedure ou SpecializedProcedure conforme o valor da coluna type, sem lógica de despacho manual nos services.
+
+4.28 Adaptação da Infraestrutura para Novos Tipos de Resposta (Etapa 3)
+Decisão
+
+Mantivemos o TransformInterceptor e o LoggingMiddleware globais, validando e ajustando o comportamento para arquivos binários (PDF) e rotas públicas de validação.
+
+Caso de Borda: PDF vs TransformInterceptor
+
+O TransformInterceptor foi projetado para padronizar respostas JSON no formato { data, meta }. No endpoint de download de laudo (GET /reports/:id/pdf), optamos por injetar o objeto de resposta do Express via @Res(). Ao assumir o controle manual da resposta (res.end(buffer)), o NestJS desativa o processamento automático do valor de retorno para este endpoint. Isso garante que o interceptor não tente encapsular o buffer binário em um JSON, o que corromperia o PDF.
+
+Logging de Arquivos
+
+Validamos que o LoggingMiddleware registra corretamente o tempo de processamento e o status das requisições de download. Como o middleware monitora o evento finish do objeto response, ele captura com precisão o momento em que o streaming do arquivo foi concluído, independente do tipo de conteúdo (JSON ou binário).
+
+Validação Pública
+
+A infraestrutura de autenticação (JwtAuthGuard) já suportava a estratégia opt-out via @Public(). O endpoint /reports/validate/:code foi integrado utilizando este decorator, permitindo que a validação pública funcione sem exigir tokens, mantendo a consistência com a estratégia de segurança definida na Etapa 2.
+
+4.29 Filtros Dinâmicos e Reutilizáveis
+Decisão
+
+Para os endpoints de listagem da Etapa 3 (procedimentos, laudos, relatórios), adotamos o uso de DTOs de Query combinados com o QueryBuilder do TypeORM nos services.
+
+Por que escolhemos isso
+
+Diferente das listagens simples da Etapa 1, os novos endpoints exigem combinações complexas de filtros (ex: filtrar procedimentos por tipo E status de autorização). O QueryBuilder permite construir a cláusula WHERE condicionalmente (if (dto.status) query.andWhere(...)), o que produz um código mais legível e performático do que tentar manipular objetos literais de critérios do TypeORM. Essa abordagem centraliza a lógica de filtragem no Service, mantendo o Controller limpo e focado apenas no mapeamento do DTO.
+
+4.30 Evolução na Estratégia de DTOs de Hierarquia
+Reflexão
+
+Na Etapa 1, para a hierarquia de Schedule, utilizamos um DTO mais genérico com campos opcionais. Aprendemos que isso dificultava a documentação no Swagger, pois não ficava claro quais campos eram obrigatórios para cada modalidade (ex: HOME vs ONLINE).
+
+Na Etapa 3, para Appointment e Procedure, evoluímos para uma estratégia de DTOs com discriminadores no Swagger (usando oneOf e discriminator). Embora no TypeScript a validação ainda dependa de decorators como @ValidateIf, a documentação agora reflete exatamente o que cada subtipo espera. Essa maturidade arquitetural melhorou a comunicação com quem consome a API e tornou a validação mais rigorosa.
+
+4.31 Integridade de Dados Clínicos e Operações Irreversíveis
+Identificação de Riscos
+
+Identificamos que as operações de encerramento de atendimento (PATCH /appointments/:id/finish), emissão de laudo (POST /report) e revogação de laudo (PATCH /revoke) possuem alto potencial de comprometer a integridade clínica por serem irreversíveis.
+
+Medidas de Proteção
+
+- Validação de Estado: O sistema impede a emissão de laudos para exames que não estejam FINISHED.
+- Imutabilidade: Uma vez encerrado o atendimento, campos como diagnosis em prontuários tornam-se imutáveis via DTO de atualização.
+- Concorrência: Utilizamos verificações no Service para garantir que um atendimento não seja encerrado duas vezes simultaneamente.
+- Procedimentos Pendentes: Decidimos que o encerramento de um atendimento não bloqueia se houver procedimentos PENDING ou DENIED. Clinicamente, um médico pode encerrar a consulta mesmo que um exame tenha sido negado pelo convênio, mas o sistema registra esse histórico como parte da evolução clínica.
+
+4.32 Escolha da Estratégia de Herança (STI) para Atendimentos e Procedimentos
+Decisão
+
+Mantivemos a estratégia de Single Table Inheritance (STI) para Appointment e Procedure.
+
+Justificativa Técnica
+
+O perfil de consultas dominante é polimórfico: quase sempre buscamos "todos os atendimentos do paciente X" ou "todos os procedimentos do atendimento Y". A STI é extremamente eficiente para isso no SQLite, pois evita JOINs ou UNIONs.
+No caso do FollowUp, a validação do originAppointmentId é feita no Service, garantindo que o atendimento de origem pertença ao mesmo paciente e não seja o próprio registro, retornando 400 Bad Request se a regra de negócio for violada (pois o ID existe, mas o vínculo é inválido).
+
+4.33 Modelagem do Campo result em Exames
+Decisão
+
+O campo result é opcional no banco de dados (permitindo NULL), mas validado obrigatoriamente no Service antes da emissão de qualquer laudo.
+
+Justificativa
+
+Um exame pode ser criado e até encerrado enquanto o laboratório processa o resultado. Permitir o NULL no banco reflete essa realidade temporal. No entanto, o ReportsService bloqueia a geração do PDF se o result estiver vazio, garantindo que nenhum laudo oficial saia sem conteúdo técnico.
+
+4.34 Exposição de authorizedBy (ID vs Referência)
+Decisão
+
+Em procedimentos especializados, o campo authorizedBy retorna tanto o ID quanto o nome do administrador nas respostas da API.
+
+Por que escolhemos isso
+
+Para o contexto clínico e auditoria, apenas o ID é insuficiente para uma leitura rápida. Realizamos um leftJoin no QueryBuilder para trazer o nome do Admin, mantendo a eficiência da consulta sem expor dados sensíveis do administrador, respeitando a serialização do UserResponseDto.
+
+4.35 Um Schedule pode ter mais de um Appointment?
+Decisão
+
+Não. O sistema impõe uma relação 1:1 estrita. Se houver uma tentativa de criar um segundo Appointment para o mesmo scheduleId, o service lança um 409 Conflict. Caso um atendimento seja excluído (o que evitamos via 405 em registros clínicos), o agendamento voltaria a ficar disponível, mas preferimos a integridade de manter o vínculo histórico.
+
+4.36 Reflexão Final: Padrão de Herança para Projetos Futuros
+
+Após implementar quatro hierarquias (User, Schedule, Appointment, Procedure) com STI no TypeORM/SQLite, nossa recomendação é:
+
+1. Use STI (Single Table) como padrão para sistemas onde a maioria das consultas é polimórfica (listagens gerais) e os subtipos não divergem massivamente em número de campos. É mais simples de manter e mais performático no SQLite.
+2. Use CTI (Joined Table) apenas se os subtipos forem entidades muito distintas, com muitos campos exclusivos que causariam uma tabela esparsa demais (excesso de NULLs), ou se houver necessidade de integridade referencial estrita em nível de banco de dados para campos específicos dos subtipos.
+
+No SGCM, a STI provou ser a escolha correta pela coesão dos dados clínicos.
+
+4.37 Gestão de Autorização e Ciclo de Vida de Procedimentos
+Decisão
+
+O endpoint PATCH /procedures/:id/authorization utiliza um campo action com os valores AUTHORIZE ou DENY. Para negações, o campo deniedReason é obrigatório no DTO. 
+
+Justificativa
+
+Optamos por um único endpoint com action em vez de rotas separadas para simplificar o controle de estado no frontend. A obrigatoriedade do motivo da negação é uma regra de negócio crítica para que o médico solicitante possa ajustar a conduta clínica ou contestar a decisão administrativa. Além disso, reforçamos que procedimentos só podem ser atualizados ou removidos enquanto o atendimento está IN_PROGRESS; uma vez finalizado, o registro torna-se parte do prontuário histórico e imutável.
+
+4.38 Prontuários: Criação, Imutabilidade e Rastreabilidade
+Decisão
+
+Os prontuários são criados manualmente pelo médico via POST /appointments/:id/records após o encerramento do atendimento.
+
+Justificativa
+
+Embora a criação automática garantisse a existência do registro, a criação manual permite que o médico refine a evolução clínica e a prescrição antes de gerar o documento final. Para garantir a integridade, o campo diagnosis é imutável após a criação, enquanto prescription e notes podem ser atualizados. 
+Implementamos o status 405 Method Not Allowed para tentativas de DELETE /records/:id, comunicando explicitamente que registros clínicos são permanentes. A rastreabilidade é garantida pelos campos createdBy (derivado do atendimento) e lastUpdatedBy (armazenado explicitamente a cada alteração, mesmo que o editor seja o mesmo criador), assegurando uma trilha de auditoria completa.
+
+4.39 Estratégia de Laudos: Validação Pública e Segurança do PDF
+Decisão
+
+O endpoint de validação pública retorna o status e os dados básicos do laudo. Para laudos REVOKED, retornamos explicitamente o status e o motivo da revogação, mas ocultamos o result clínico para proteger a privacidade do paciente em um endpoint sem autenticação.
+
+Segurança e Acesso
+
+O acesso ao PDF via GET /reports/:id/pdf exige validação de ownership: um paciente só acessa seus laudos, e um médico só acessa o que emitiu. Mesmo laudos revogados permanecem acessíveis para consulta histórica dos envolvidos, mas com uma marca d'água visual (ou aviso no cabeçalho) gerada pelo PdfService.
+
+Roteamento
+
+Para evitar conflitos de roteamento no NestJS, a rota estática reports/validate/:code foi declarada antes da rota parametrizada reports/:id, garantindo que a string "validate" não seja interpretada como um ID numérico.
+
+4.40 Relatórios Administrativos e Taxa de Ocupação
+Decisão
+
+Os relatórios administrativos utilizam queries SQL via QueryBuilder com GROUP BY e COUNT, delegando o processamento pesado ao banco de dados. 
+
+Estrutura de Resposta
+
+As respostas são encapsuladas no envelope { data, meta }, onde data utiliza o formato de objeto com chaves dinâmicas (ex: {"PENDING": 10, "AUTHORIZED": 5}) por ser mais compacto para consumo em dashboards de resumo.
+
+Métrica de Ocupação
+
+Definimos a taxa de ocupação como: (CONFIRMED + COMPLETED) / (TOTAL_AGENDADOS - CANCELLED). Ignoramos cancelamentos para refletir a ocupação real do tempo que o médico dedicou ou dedicará efetivamente à clínica.
+
+4.41 Arquitetura do PdfService e Tratamento de Falhas
+Decisão
+
+O PdfService recebe um LaudoPdfDto consolidado em vez da entidade completa.
+
+Justificativa
+
+Isso reduz o acoplamento entre o módulo de persistência e o de geração de documentos. Caso a biblioteca de PDF (pdfkit) falhe, o erro é capturado e mapeado para o HttpExceptionFilter, retornando um erro 500 Internal Server Error no padrão RFC 7807, ocultando detalhes técnicos da biblioteca mas informando que a geração do documento falhou. 
+Atualmente, o PDF contém o validationCode em texto; a inclusão de um QR Code foi avaliada como uma melhoria futura de usabilidade, pendente da adição da biblioteca qrcode.
+
+4.42 Organização de Pré-condições e Transações
+Decisão
+
+As validações de pré-condição (ex: atendimento é EXAM? está FINISHED?) são organizadas em métodos privados auxiliares dentro dos Services (ex: validateIssueReportPreConditions).
+
+Transações
+
+Identificamos que o encerramento de atendimento e a emissão de laudo são operações críticas. Utilizamos EntityManager.transaction para garantir que, se a geração do laudo falhar, o status do atendimento não seja alterado indevidamente, mantendo a consistência do estado clínico.
+
+4.43 Retrospectiva e Evolução do Projeto
+Reflexão Final
+
+Ao longo das três etapas, a maior lição foi sobre a rigidez necessária em sistemas clínicos. Decisões da Etapa 1, como o uso de IDs simples, facilitaram o início, mas exigiram guards robustos na Etapa 3 para garantir a privacidade (Ownership).
+
+Se recomeçássemos, adotaríamos UUIDs como chaves primárias públicas desde o início para evitar a enumeração de recursos. A política de documentação "Swagger-First" foi mantida com sucesso, e os exemplos no Swagger foram sincronizados com os dados do seed para permitir testes reais imediatos. O README.md foi revisado para incluir todas as novas variáveis de ambiente e instruções para o endpoint público de validação.
 
 5. Tabela de Controle de Acesso por Recurso
 
